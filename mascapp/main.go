@@ -1,40 +1,55 @@
 package main
 
 import (
-    "syscall/js"
-    // Uncomment and use masc APIs instead of direct JS calls:
-    // "github.com/octoberswimmer/masc"
+   "syscall/js"
+
+   "github.com/octoberswimmer/masc"
+   "github.com/octoberswimmer/masc/elem"
+   "github.com/octoberswimmer/thunder/components"
 )
 
+// AppModel is a Masc model that renders a single SLDS button.
+type AppModel struct {
+	masc.Core
+}
+
+// Init implements masc.Model.
+func (m *AppModel) Init() masc.Cmd { return nil }
+
+// Update implements masc.Model.
+func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
+	// No state updates required
+	return m, nil
+}
+
+// Render returns the SLDS-styled button wrapped in a <div>.
+func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
+   return elem.Div(
+       components.Button("Query Accounts", components.VariantBrand, func(e *masc.Event) {
+           // Use vecty-provided global 'get' for SOQL
+           promise := js.Global().Call("get", "/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+5")
+           promise.Call("then", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+               pre := js.Global().Get("document").Call("createElement", "pre")
+               pre.Set("innerText", args[0].String())
+               // Append to body
+               js.Global().Get("document").Get("body").Call("appendChild", pre)
+               return nil
+           }))
+       }),
+   )
+}
+
 func main() {
-    // Minimal Go WASM using syscall/js to invoke the vecty LWC proxy methods
-
-    // Export a startWithDiv function for the vecty LWC to call
-    js.Global().Set("startWithDiv", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-        // args[0] is the container div element passed in by vecty.js
-        div := args[0]
-        // Create a heading
-        h1 := js.Global().Get("document").Call("createElement", "h1")
-        h1.Set("innerText", "MASC Example")
-        div.Call("appendChild", h1)
-        // Create a button that triggers a SOQL query via the vecty LWC proxy
-        btn := js.Global().Get("document").Call("createElement", "button")
-        btn.Set("innerText", "Query Accounts")
-        btn.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-            // Use the global 'get' function injected by the vecty LWC
-            promise := js.Global().Call("get", "/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+5")
-            promise.Call("then", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-                pre := js.Global().Get("document").Call("createElement", "pre")
-                pre.Set("innerText", args[0].String())
-                div.Call("appendChild", pre)
-                return nil
-            }))
-            return nil
-        }))
-        div.Call("appendChild", btn)
-        return nil
-    }))
-
-    // Prevent the Go program from exiting
-    select {}
+	// Register startWithDiv callback for vecty host
+	js.Global().Set("startWithDiv", js.FuncOf(func(_ js.Value, args []js.Value) interface{} {
+		div := args[0]
+		// Launch Masc program, rendering into the provided div
+		go func() {
+			program := masc.NewProgram(&AppModel{}, masc.RenderTo(div))
+			program.Run()
+		}()
+		return nil
+	}))
+	// Keep Go runtime alive
+	select {}
 }

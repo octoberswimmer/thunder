@@ -1,0 +1,4 @@
+github.com/octoberswimmer/masc v0.0.0-20250117215935-724533f95fd8 h1:aKxp2Hr0JhxB01sZfn1l7yFuTADA3N2JKMJRiwyTHJQ=
+github.com/octoberswimmer/masc v0.0.0-20250117215935-724533f95fd8/go.mod h1:8AnCJhF2k7S4oOiPNf06wiXy1EdMId5iWK+KK8cx878=
+golang.org/x/sync v0.6.0 h1:5BMeUDZ7vkXGfEr1x9B4bRcTH4lpkTkpdh0T/J+qjbQ=
+golang.org/x/sync v0.6.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
