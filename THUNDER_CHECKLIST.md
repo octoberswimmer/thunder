@@ -9,7 +9,7 @@
 We aim to provide a suite of SLDS-styled components under `github.com/octoberswimmer/thunder/components`.
 
 - [x] Button
-- [ ] Data Table
+- [x] Data Table
 - [ ] Card
 - [ ] Page Header
 - [ ] Modal / Popover
