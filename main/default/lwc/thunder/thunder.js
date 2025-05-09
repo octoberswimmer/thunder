@@ -12,6 +12,8 @@ import callRest from '@salesforce/apex/GoBridge.callRest';
 export default class Thunder extends LightningElement {
 	// URL of the WASM app to load; uses DEFAULT_THUNDER_APP if not provided
 	@api app;
+	// Label to display on the console tab when navigation is enabled
+	@api appName;
 	@wire(IsConsoleNavigation) isConsoleNavigation;
 
 	renderMode = "shadow";
@@ -20,7 +22,9 @@ export default class Thunder extends LightningElement {
 	renderedCallback() {
 		if (this.isConsoleNavigation) {
 			getFocusedTabInfo().then((tabInfo) => {
-				setTabLabel(tabInfo.tabId, 'Thunder App');
+				// Use provided appName or fallback to default
+				const label = this.appName || 'Thunder App';
+				setTabLabel(tabInfo.tabId, label);
 				setTabIcon(tabInfo.tabId, 'apex');
 			});
 		}
