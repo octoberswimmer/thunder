@@ -19,10 +19,10 @@ Repository Structure:
 │   │   ├── classes/         # Apex classes (GoBridge + tests)
 │   │   ├── lwc/             # Lightning Web Components (thunder, thunderDemo)
 │   │   └── staticresources/ # WASM binaries (hello.wasm, masc.wasm)
-├── mascapp/         # Go MASC application source (uses Thunder components)
-│   ├── main.go       # Masc program rendering button or data table
-│   └── go.mod        # Go module for mascapp
-├── Makefile         # Builds mascapp/main.go to masc.wasm
+├── thunderDemo/     # Go MASC application source (uses Thunder components)
+│   ├── main.go       # Masc program rendering button and data table
+│   └── go.mod        # Go module for thunderDemo
+├── Makefile         # Builds thunderDemo/main.go to thunderDemo.wasm
 └── README.md        # This file
 ```
 
@@ -52,4 +52,4 @@ Getting Started:
 5. Open **Thunder Demo** Tab in your org.
 6. Click **Fetch Accounts** to see a data table rendered from your Go WASM app.
 
-For details on implementing additional SLDS components, see `THUNDER_COMPONENTS_CHECKLIST.md`.
+For details on implementing additional SLDS components, see `THUNDER_CHECKLIST.md`.
