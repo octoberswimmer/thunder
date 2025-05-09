@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
-    <apiVersion>58.0</apiVersion>
-    <description>Vecty WASM LWC wrapper</description>
+    <apiVersion>63.0</apiVersion>
+    <description>Thunder WASM LWC wrapper</description>
     <isExposed>true</isExposed>
-    <masterLabel>vecty</masterLabel>
+    <masterLabel>thunder</masterLabel>
     <targets>
         <target>lightning__AppPage</target>
         <target>lightning__RecordPage</target>
@@ -11,7 +11,7 @@
     </targets>
     <targetConfigs>
         <targetConfig targets="lightning__AppPage,lightning__RecordPage">
-            <property name="app" type="String" label="WASM App URL" description="URL of the Vecty WASM App" default="" />
+            <property name="app" type="String" label="WASM App URL" description="URL of the Thunder WASM App" default="" />
         </targetConfig>
     </targetConfigs>
 </LightningComponentBundle>

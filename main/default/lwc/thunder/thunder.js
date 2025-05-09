@@ -3,15 +3,15 @@ import { setTabLabel, setTabIcon, IsConsoleNavigation, getFocusedTabInfo } from 
 
 import Go from 'c/go';
 
-// Default static resource for Vecty WASM app; can be overridden via @api app
-import DEFAULT_VECTY_APP from "@salesforce/resourceUrl/hello";
+// Default static resource for Thunder WASM app; can be overridden via @api app
+import DEFAULT_THUNDER_APP from "@salesforce/resourceUrl/hello";
 // Apex proxy for REST calls
 import callRest from '@salesforce/apex/GoBridge.callRest';
 
-// An example Vecty application
-export default class Vecty extends LightningElement {
-    // URL of the WASM app to load; uses DEFAULT_VECTY_APP if not provided
-    @api app;
+// An example Thunder application
+export default class Thunder extends LightningElement {
+	// URL of the WASM app to load; uses DEFAULT_THUNDER_APP if not provided
+	@api app;
 	@wire(IsConsoleNavigation) isConsoleNavigation;
 
 	renderMode = "shadow";
@@ -20,7 +20,7 @@ export default class Vecty extends LightningElement {
 	renderedCallback() {
 		if (this.isConsoleNavigation) {
 			getFocusedTabInfo().then((tabInfo) => {
-				setTabLabel(tabInfo.tabId, 'Masc Example');
+				setTabLabel(tabInfo.tabId, 'Thunder App');
 				setTabIcon(tabInfo.tabId, 'apex');
 			});
 		}
@@ -33,7 +33,7 @@ export default class Vecty extends LightningElement {
 	async init() {
 		this.initialized = true;
 		var divElement = this.template.querySelector('div');
-		const appUrl = this.app || DEFAULT_VECTY_APP;
+		const appUrl = this.app || DEFAULT_THUNDER_APP;
 		// Expose REST methods to Go WASM
 		// get, post, put, delete should call Apex @AuraEnabled proxy
 		globalThis.get = (url) => callRest({ method: 'GET', url, body: null });
