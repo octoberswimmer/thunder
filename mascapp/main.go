@@ -1,10 +1,12 @@
 package main
 
 import (
-	"syscall/js"
+	"encoding/json"
 
 	"github.com/octoberswimmer/masc"
 	"github.com/octoberswimmer/masc/elem"
+	"github.com/octoberswimmer/thunder"
+	"github.com/octoberswimmer/thunder/api"
 	"github.com/octoberswimmer/thunder/components"
 )
 
@@ -56,40 +58,23 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 // fetchAccountsCmd creates a Cmd that fetches accounts via JS and returns a Msg.
 func fetchAccountsCmd() masc.Cmd {
 	return func() masc.Msg {
-		ch := make(chan []map[string]string)
-		// Call global get() proxy to SOQL endpoint
-		js.Global().Call(
-			"get",
-			"/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+5",
-		).Call("then", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-			parsed := js.Global().Get("JSON").Call("parse", args[0].String())
-			recs := parsed.Get("records")
-			n := recs.Length()
-			rows := make([]map[string]string, n)
-			for i := 0; i < n; i++ {
-				r := recs.Index(i)
-				rows[i] = map[string]string{"Name": r.Get("Name").String()}
-			}
-			ch <- rows
-			return nil
-		}))
-		// Wait for JS promise callback to send rows
-		rows := <-ch
+		data := api.Get("/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+5")
+		var result map[string]any
+		err := json.Unmarshal(data, &result)
+		if err != nil {
+			panic(err.Error())
+		}
+		recs := result["records"].([]any)
+		rows := make([]map[string]string, len(recs))
+		for i, r := range recs {
+			v := r.(map[string]any)
+			name := v["Name"].(string)
+			rows[i] = map[string]string{"Name": name}
+		}
 		return AccountsFetchedMsg{Rows: rows}
 	}
 }
 
 func main() {
-	// Register startWithDiv: Vecty host calls this
-	js.Global().Set("startWithDiv", js.FuncOf(func(_ js.Value, args []js.Value) interface{} {
-		div := args[0]
-		// Launch Masc program rendering into this div
-		go masc.NewProgram(
-			&AppModel{},
-			masc.RenderTo(div),
-		).Run()
-		return nil
-	}))
-	// Keep Go runtime alive
-	select {}
+	thunder.Run(&AppModel{})
 }
