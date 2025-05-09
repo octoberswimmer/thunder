@@ -7,7 +7,7 @@ import (
 )
 
 func Run(model masc.Model) {
-	// Register startWithDiv: Vecty host calls this
+	// Register startWithDiv: thunder host calls this
 	js.Global().Set("startWithDiv", js.FuncOf(func(_ js.Value, args []js.Value) interface{} {
 		div := args[0]
 		// Launch Masc program rendering into this div

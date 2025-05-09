@@ -1,11 +1,11 @@
- # Makefile for building Go WASM MASC app into Salesforce static resource
+ # Makefile for building Go WASM Thunder app into Salesforce static resource
 
  GOCMD = go
  GOWASMOS = js
  GOWASMARCH = wasm
- SRC_DIR = mascapp
+ SRC_DIR = thunderDemo
  SRC_FILE = main.go
- OUTPUT = main/default/staticresources/masc.wasm
+ OUTPUT = main/default/staticresources/thunderDemo.wasm
 
  .PHONY: all clean
 
