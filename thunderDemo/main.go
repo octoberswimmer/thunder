@@ -56,9 +56,15 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 			),
 		)
 	}
-	// Wrap the button and data table inside a Card, and that inside a Div container
+	// Assemble header and content inside a container div
 	return elem.Div(
-		components.Card("Thunder Demo", elems...),
+		// Page header with title and optional subtitle
+		components.PageHeader(
+			"Thunder Demo",
+			"Go/WASM SLDS component demo",
+		),
+		// Card containing button and data table
+		components.Card("Accounts", elems...),
 	)
 }
 
