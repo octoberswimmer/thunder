@@ -48,10 +48,17 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		send(FetchAccountsMsg{})
 	}))
 	if len(m.Rows) > 0 {
-		elems = append(elems, components.DataTable([]string{"Name"}, m.Rows))
+		// Add margin between the fetch button and the data table
+		elems = append(elems,
+			elem.Div(
+				masc.Markup(masc.Class("slds-m-top_medium")),
+				components.DataTable([]string{"Name"}, m.Rows),
+			),
+		)
 	}
+	// Wrap the button and data table inside a Card, and that inside a Div container
 	return elem.Div(
-		elems...,
+		components.Card("Thunder Demo", elems...),
 	)
 }
 
