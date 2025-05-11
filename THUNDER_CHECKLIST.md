@@ -15,7 +15,7 @@ We aim to provide a suite of SLDS-styled components under `github.com/octoberswi
 - [x] Toast
 - [x] Input (Text)
 - [x] Select / Dropdown
-- [ ] Checkbox / Switch
+- [x] Checkbox / Switch
 - [ ] Radio Group
 - [ ] Tabs
 - [ ] Breadcrumbs

@@ -28,20 +28,24 @@ type InputMsg struct{ Value string }
 // LimitChangeMsg represents changing the fetch limit via select dropdown.
 type LimitChangeMsg struct{ Limit string }
 
+// CheckboxMsg represents toggling the demo checkbox filter.
+type CheckboxMsg struct{ Checked bool }
+
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
 
 // HideToastMsg represents closing the toast notification.
 type HideToastMsg struct{}
 
-// AppModel holds application state (input value, fetch limit, rows, modal/toast visibility).
+// AppModel holds application state (input value, fetch limit, checkbox filter, rows, modal/toast visibility).
 type AppModel struct {
 	masc.Core
-	InputValue string
-	Limit      string
-	Rows       []map[string]string
-	ShowModal  bool
-	ShowToast  bool
+	InputValue  string
+	Limit       string
+	FilterAOnly bool
+	Rows        []map[string]string
+	ShowModal   bool
+	ShowToast   bool
 }
 
 // Init returns no initial command.
@@ -59,9 +63,13 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		m.InputValue = msg.(InputMsg).Value
 		return m, nil
 	case LimitChangeMsg:
-		// Update fetch limit and refetch accounts
+		// Update fetch limit and refetch
 		m.Limit = msg.(LimitChangeMsg).Limit
 		return m, fetchAccountsCmd(m.Limit)
+	case CheckboxMsg:
+		// Update checkbox filter
+		m.FilterAOnly = msg.(CheckboxMsg).Checked
+		return m, nil
 	case FetchAccountsMsg:
 		// Trigger asynchronous fetch command with selected limit
 		return m, fetchAccountsCmd(m.Limit)
@@ -107,14 +115,23 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.Select(
 					"Limit",
-					[]components.SelectOption{
-						{Label: "5", Value: "5"},
-						{Label: "10", Value: "10"},
-						{Label: "20", Value: "20"},
-					},
+					[]components.SelectOption{{Label: "5", Value: "5"}, {Label: "10", Value: "10"}, {Label: "20", Value: "20"}},
 					m.Limit,
 					func(e *masc.Event) {
 						send(LimitChangeMsg{Limit: e.Target.Get("value").String()})
+					},
+				),
+			),
+		)
+		// Render checkbox filter with spacing above
+		elems = append(elems,
+			elem.Div(
+				masc.Markup(masc.Class("slds-m-top_medium")),
+				components.Checkbox(
+					"Only names containing 'A'",
+					m.FilterAOnly,
+					func(e *masc.Event) {
+						send(CheckboxMsg{Checked: e.Target.Get("checked").Bool()})
 					},
 				),
 			),
@@ -128,11 +145,14 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				}),
 			),
 		)
-		// Filter rows by input substring
+		// Filter rows by input substring and checkbox
 		var filtered []map[string]string
 		query := strings.ToLower(m.InputValue)
 		for _, r := range m.Rows {
-			if query == "" || strings.Contains(strings.ToLower(r["Name"]), query) {
+			name := r["Name"]
+			lower := strings.ToLower(name)
+			if (query == "" || strings.Contains(lower, query)) &&
+				(!m.FilterAOnly || strings.Contains(lower, "a")) {
 				filtered = append(filtered, r)
 			}
 		}
