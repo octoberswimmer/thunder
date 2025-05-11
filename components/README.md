@@ -7,6 +7,7 @@
 - DataTable (basic tabular display)
 - Card (container with header and body)
 - Page Header (page-level heading with optional subtitle and actions)
+- Modal (dialog overlay)
   
 ## Installation
 Add Thunder as a dependency in your Go WASM module:
