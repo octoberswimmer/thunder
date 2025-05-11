@@ -12,10 +12,9 @@ We aim to provide a suite of SLDS-styled components under `github.com/octoberswi
 - [x] Data Table
 - [x] Card
 - [x] Page Header
-- [x] Modal / Popover
-+ [x] Toast
+- [x] Toast
 - [x] Input (Text)
-- [ ] Select / Dropdown
+- [x] Select / Dropdown
 - [ ] Checkbox / Switch
 - [ ] Radio Group
 - [ ] Tabs

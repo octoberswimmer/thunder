@@ -10,6 +10,7 @@
 - Modal (dialog overlay)
 - Toast (notification overlay)
 - TextInput (labeled text input)
+- Select (dropdown)
   
 ## Installation
 Add Thunder as a dependency in your Go WASM module:

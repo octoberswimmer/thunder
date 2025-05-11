@@ -25,34 +25,46 @@ type ToggleModalMsg struct{}
 // InputMsg represents user input in the text field.
 type InputMsg struct{ Value string }
 
+// LimitChangeMsg represents changing the fetch limit via select dropdown.
+type LimitChangeMsg struct{ Limit string }
+
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
 
 // HideToastMsg represents closing the toast notification.
 type HideToastMsg struct{}
 
-// AppModel holds application state (input value, rows, modal and toast visibility) and implements masc.Model.
+// AppModel holds application state (input value, fetch limit, rows, modal/toast visibility).
 type AppModel struct {
 	masc.Core
 	InputValue string
+	Limit      string
 	Rows       []map[string]string
 	ShowModal  bool
 	ShowToast  bool
 }
 
 // Init returns no initial command.
-func (m *AppModel) Init() masc.Cmd { return nil }
+// Init sets default limit on startup.
+func (m *AppModel) Init() masc.Cmd {
+	m.Limit = "5"
+	return nil
+}
 
 // Update handles messages and returns commands.
 func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 	switch msg.(type) {
 	case InputMsg:
-		// Update input field value
+		// Update input filter value
 		m.InputValue = msg.(InputMsg).Value
 		return m, nil
+	case LimitChangeMsg:
+		// Update fetch limit and refetch accounts
+		m.Limit = msg.(LimitChangeMsg).Limit
+		return m, fetchAccountsCmd(m.Limit)
 	case FetchAccountsMsg:
-		// Trigger asynchronous fetch command
-		return m, fetchAccountsCmd()
+		// Trigger asynchronous fetch command with selected limit
+		return m, fetchAccountsCmd(m.Limit)
 	case AccountsFetchedMsg:
 		// Update model with fetched rows
 		m.Rows = msg.(AccountsFetchedMsg).Rows
@@ -89,6 +101,24 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		}),
 	}
 	if len(m.Rows) > 0 {
+		// Render limit select with spacing above
+		elems = append(elems,
+			elem.Div(
+				masc.Markup(masc.Class("slds-m-top_medium")),
+				components.Select(
+					"Limit",
+					[]components.SelectOption{
+						{Label: "5", Value: "5"},
+						{Label: "10", Value: "10"},
+						{Label: "20", Value: "20"},
+					},
+					m.Limit,
+					func(e *masc.Event) {
+						send(LimitChangeMsg{Limit: e.Target.Get("value").String()})
+					},
+				),
+			),
+		)
 		// Render filter input with spacing above
 		elems = append(elems,
 			elem.Div(
@@ -167,9 +197,12 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 }
 
 // fetchAccountsCmd creates a Cmd that fetches accounts via JS and returns a Msg.
-func fetchAccountsCmd() masc.Cmd {
+// It uses the provided limit value for the SOQL query.
+func fetchAccountsCmd(limit string) masc.Cmd {
 	return func() masc.Msg {
-		data := api.Get("/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+5")
+		// Build query with dynamic LIMIT
+		url := "/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+" + limit
+		data := api.Get(url)
 		var result map[string]any
 		err := json.Unmarshal(data, &result)
 		if err != nil {
