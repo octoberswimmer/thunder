@@ -38,27 +38,35 @@ type FilterModeMsg struct{ Mode string }
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
 
+// TabChangeMsg represents selecting a different tab in the UI.
+type TabChangeMsg struct{ Tab string }
+
 // HideToastMsg represents closing the toast notification.
 type HideToastMsg struct{}
 
 // AppModel holds application state (input value, fetch limit, checkbox filter, rows, modal/toast visibility).
 type AppModel struct {
 	masc.Core
+	// UI state
 	InputValue  string
 	Limit       string
 	FilterAOnly bool
 	FilterMode  string
-	Rows        []map[string]string
-	ShowModal   bool
-	ShowToast   bool
+	SelectedTab string
+	// Data
+	Rows []map[string]string
+	// Overlays
+	ShowModal bool
+	ShowToast bool
 }
 
 // Init returns no initial command.
 // Init sets default limit on startup.
 func (m *AppModel) Init() masc.Cmd {
-	// Default fetch limit and filter mode
+	// Default fetch limit, filter mode, and selected tab
 	m.Limit = "5"
 	m.FilterMode = "contains"
+	m.SelectedTab = "actions"
 	return nil
 }
 
@@ -87,6 +95,7 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 	case AccountsFetchedMsg:
 		// Update model with fetched rows
 		m.Rows = msg.(AccountsFetchedMsg).Rows
+		m.SelectedTab = "data"
 		return m, nil
 	case ToggleModalMsg:
 		// Toggle modal visibility
@@ -100,6 +109,9 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		// Hide toast notification
 		m.ShowToast = false
 		return m, nil
+	case TabChangeMsg:
+		m.SelectedTab = msg.(TabChangeMsg).Tab
+		return m, nil
 	default:
 		return m, nil
 	}
@@ -107,8 +119,9 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 
 // Render renders the button or the data table based on state.
 func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
-	// Build primary action buttons
-	elems := []masc.MarkupOrChild{
+	// Build two tab panes: actions and data
+	// Actions pane: primary buttons
+	actions := []masc.MarkupOrChild{
 		components.Button("Fetch Accounts", components.VariantBrand, func(e *masc.Event) {
 			send(FetchAccountsMsg{})
 		}),
@@ -119,9 +132,11 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 			send(ShowToastMsg{})
 		}),
 	}
+	// Data pane: filters and table
+	var data []masc.MarkupOrChild
 	if len(m.Rows) > 0 {
-		// Render limit select with spacing above
-		elems = append(elems,
+		// Limit select
+		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.Select(
@@ -134,40 +149,34 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				),
 			),
 		)
-		// Render checkbox filter with spacing above
-		elems = append(elems,
+		// Checkbox filter
+		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.Checkbox(
 					"Only names containing 'A'",
 					m.FilterAOnly,
 					func(e *masc.Event) {
-						// Toggle checkbox filter state
 						send(CheckboxMsg{Checked: !m.FilterAOnly})
 					},
 				),
 			),
 		)
-		// Render filter mode radio group with spacing above
-		elems = append(elems,
+		// Radio filter mode
+		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.RadioGroup(
 					"filtermode",
 					"Filter Mode",
-					[]components.RadioOption{
-						{Label: "Contains", Value: "contains"},
-						{Label: "Starts With", Value: "startswith"},
-					},
+					[]components.RadioOption{{Label: "Contains", Value: "contains"}, {Label: "Starts With", Value: "startswith"}},
 					m.FilterMode,
-					func(mode string) {
-						send(FilterModeMsg{Mode: mode})
-					},
+					func(mode string) { send(FilterModeMsg{Mode: mode}) },
 				),
 			),
 		)
-		// Render filter input with spacing above
-		elems = append(elems,
+		// Text input filter
+		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.TextInput("Filter by Name", m.InputValue, "Enter substring", func(e *masc.Event) {
@@ -175,41 +184,41 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				}),
 			),
 		)
-		// Filter rows by input substring and checkbox
+		// Apply filters
 		var filtered []map[string]string
 		query := strings.ToLower(m.InputValue)
 		for _, r := range m.Rows {
 			name := r["Name"]
 			lower := strings.ToLower(name)
-			// Determine if query matches based on selected mode
-			var matchesQuery bool
-			if query == "" {
-				matchesQuery = true
-			} else if m.FilterMode == "contains" {
-				matchesQuery = strings.Contains(lower, query)
-			} else if m.FilterMode == "startswith" {
-				matchesQuery = strings.HasPrefix(lower, query)
+			var match bool
+			if query == "" || (m.FilterMode == "contains" && strings.Contains(lower, query)) || (m.FilterMode == "startswith" && strings.HasPrefix(lower, query)) {
+				match = true
 			}
-			// Apply checkbox filter for letter 'a'
-			if matchesQuery && (!m.FilterAOnly || strings.Contains(lower, "a")) {
+			if match && (!m.FilterAOnly || strings.Contains(lower, "a")) {
 				filtered = append(filtered, r)
 			}
 		}
-		// Render data table with spacing above
-		elems = append(elems,
+		// Data table
+		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.DataTable([]string{"Name"}, filtered),
 			),
 		)
 	}
-	// Compose main content: header and card
+	// Compose tabs inside the Accounts card
+	tabs := components.Tabs(
+		"accounts-tabs",
+		[]components.TabOption{
+			{Label: "Actions", Value: "actions", Content: elem.Div(actions...)},
+			{Label: "Data", Value: "data", Content: elem.Div(data...)},
+		},
+		m.SelectedTab,
+		func(tab string) { send(TabChangeMsg{Tab: tab}) },
+	)
 	children := []masc.MarkupOrChild{
-		components.PageHeader(
-			"Thunder Demo",
-			fmt.Sprintf("Mode: %s; Only A: %t", m.FilterMode, m.FilterAOnly),
-		),
-		components.Card("Accounts", elems...),
+		components.PageHeader("Thunder Demo", fmt.Sprintf("Mode: %s; Only A: %t", m.FilterMode, m.FilterAOnly)),
+		components.Card("Accounts", tabs),
 	}
 	// Append modal overlay if toggled
 	if m.ShowModal {
