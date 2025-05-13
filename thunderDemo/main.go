@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -31,6 +32,9 @@ type LimitChangeMsg struct{ Limit string }
 // CheckboxMsg represents toggling the demo checkbox filter.
 type CheckboxMsg struct{ Checked bool }
 
+// FilterModeMsg represents changing the filter mode (contains vs startsWith).
+type FilterModeMsg struct{ Mode string }
+
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
 
@@ -43,6 +47,7 @@ type AppModel struct {
 	InputValue  string
 	Limit       string
 	FilterAOnly bool
+	FilterMode  string
 	Rows        []map[string]string
 	ShowModal   bool
 	ShowToast   bool
@@ -51,7 +56,9 @@ type AppModel struct {
 // Init returns no initial command.
 // Init sets default limit on startup.
 func (m *AppModel) Init() masc.Cmd {
+	// Default fetch limit and filter mode
 	m.Limit = "5"
+	m.FilterMode = "contains"
 	return nil
 }
 
@@ -69,6 +76,10 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 	case CheckboxMsg:
 		// Update checkbox filter
 		m.FilterAOnly = msg.(CheckboxMsg).Checked
+		return m, nil
+	case FilterModeMsg:
+		// Update filter mode
+		m.FilterMode = msg.(FilterModeMsg).Mode
 		return m, nil
 	case FetchAccountsMsg:
 		// Trigger asynchronous fetch command with selected limit
@@ -131,7 +142,26 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 					"Only names containing 'A'",
 					m.FilterAOnly,
 					func(e *masc.Event) {
-						send(CheckboxMsg{Checked: e.Target.Get("checked").Bool()})
+						// Toggle checkbox filter state
+						send(CheckboxMsg{Checked: !m.FilterAOnly})
+					},
+				),
+			),
+		)
+		// Render filter mode radio group with spacing above
+		elems = append(elems,
+			elem.Div(
+				masc.Markup(masc.Class("slds-m-top_medium")),
+				components.RadioGroup(
+					"filtermode",
+					"Filter Mode",
+					[]components.RadioOption{
+						{Label: "Contains", Value: "contains"},
+						{Label: "Starts With", Value: "startswith"},
+					},
+					m.FilterMode,
+					func(mode string) {
+						send(FilterModeMsg{Mode: mode})
 					},
 				),
 			),
@@ -151,8 +181,17 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		for _, r := range m.Rows {
 			name := r["Name"]
 			lower := strings.ToLower(name)
-			if (query == "" || strings.Contains(lower, query)) &&
-				(!m.FilterAOnly || strings.Contains(lower, "a")) {
+			// Determine if query matches based on selected mode
+			var matchesQuery bool
+			if query == "" {
+				matchesQuery = true
+			} else if m.FilterMode == "contains" {
+				matchesQuery = strings.Contains(lower, query)
+			} else if m.FilterMode == "startswith" {
+				matchesQuery = strings.HasPrefix(lower, query)
+			}
+			// Apply checkbox filter for letter 'a'
+			if matchesQuery && (!m.FilterAOnly || strings.Contains(lower, "a")) {
 				filtered = append(filtered, r)
 			}
 		}
@@ -168,7 +207,7 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 	children := []masc.MarkupOrChild{
 		components.PageHeader(
 			"Thunder Demo",
-			"Go/WASM SLDS component demo",
+			fmt.Sprintf("Mode: %s; Only A: %t", m.FilterMode, m.FilterAOnly),
 		),
 		components.Card("Accounts", elems...),
 	}

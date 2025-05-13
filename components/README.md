@@ -12,6 +12,7 @@
 - TextInput (labeled text input)
 - Select (dropdown)
 - Checkbox (boolean input)
+- RadioGroup (single-choice options)
   
 ## Installation
 Add Thunder as a dependency in your Go WASM module:
