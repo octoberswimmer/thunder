@@ -17,8 +17,8 @@ We aim to provide a suite of SLDS-styled components under `github.com/octoberswi
 - [x] Select / Dropdown
 - [x] Checkbox / Switch
 - [x] Radio Group
-- [ ] Tabs
-- [ ] Breadcrumbs
+- [x] Tabs
+  [ ] Breadcrumbs (postpone)
 - [ ] Progress Indicator
 - [ ] Lookup / Autocomplete
 - [ ] Spinner / Loading Indicator

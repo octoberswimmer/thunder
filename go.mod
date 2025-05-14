@@ -1,9 +1,14 @@
 module github.com/octoberswimmer/thunder
 
-go 1.23.0
+go 1.23.6
 
 toolchain go1.24.2
 
-require github.com/octoberswimmer/masc v0.1.0 // SLDS components
+require github.com/octoberswimmer/masc v0.3.0 // SLDS components
 
-require golang.org/x/sync v0.14.0 // indirect
+require (
+	github.com/gost-dom/browser v0.5.7 // indirect
+	github.com/gost-dom/css v0.1.0 // indirect
+	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/sync v0.14.0 // indirect
+)

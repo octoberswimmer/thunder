@@ -216,10 +216,15 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		m.SelectedTab,
 		func(tab string) { send(TabChangeMsg{Tab: tab}) },
 	)
-	children := []masc.MarkupOrChild{
-		components.PageHeader("Thunder Demo", fmt.Sprintf("Mode: %s; Only A: %t", m.FilterMode, m.FilterAOnly)),
-		components.Card("Accounts", tabs),
-	}
+	// Build page layout with header and card
+	header := components.PageHeader(
+		"Thunder Demo",
+		fmt.Sprintf("Mode: %s; Only A: %t", m.FilterMode, m.FilterAOnly),
+	)
+	card := components.Card("Accounts", tabs)
+	// Page wraps header and card
+	pageLayout := components.Page(header, card)
+	children := []masc.MarkupOrChild{pageLayout}
 	// Append modal overlay if toggled
 	if m.ShowModal {
 		children = append(children,
