@@ -1,1 +1,3 @@
 *.wasm
+go.work
+go.work.sum
