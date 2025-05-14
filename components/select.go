@@ -22,9 +22,15 @@ func Select(label string, options []SelectOption, selected string, onChange func
 	selectOpts := func() []masc.MarkupOrChild {
 		var opts []masc.MarkupOrChild
 		for _, opt := range options {
+			// Option markup: always set value; mark selected option
+			var pm []masc.Applyer
+			pm = append(pm, masc.Property("value", opt.Value))
+			if opt.Value == selected {
+				pm = append(pm, masc.Property("selected", true))
+			}
 			opts = append(opts,
 				elem.Option(
-					masc.Markup(masc.Property("value", opt.Value)),
+					masc.Markup(pm...),
 					masc.Text(opt.Label),
 				),
 			)
