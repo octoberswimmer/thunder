@@ -75,31 +75,31 @@ func (m *AppModel) Init() masc.Cmd {
 
 // Update handles messages and returns commands.
 func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
-	switch msg.(type) {
+	switch msg := msg.(type) {
 	case InputMsg:
 		// Update input filter value
-		m.InputValue = msg.(InputMsg).Value
+		m.InputValue = msg.Value
 		return m, nil
 	case LimitChangeMsg:
 		// Update fetch limit and refetch
-		m.Limit = msg.(LimitChangeMsg).Limit
-		return m, fetchAccountsCmd(m.Limit)
+		m.Limit = msg.Limit
+		cmd := m.fetchAccountsCmd(m.Limit)
+		return m, cmd
 	case CheckboxMsg:
 		// Update checkbox filter
-		m.FilterAOnly = msg.(CheckboxMsg).Checked
+		m.FilterAOnly = msg.Checked
 		return m, nil
 	case FilterModeMsg:
 		// Update filter mode
-		m.FilterMode = msg.(FilterModeMsg).Mode
+		m.FilterMode = msg.Mode
 		return m, nil
 	case FetchAccountsMsg:
 		// Trigger asynchronous fetch command with selected limit
-		m.Loading = true
-		return m, fetchAccountsCmd(m.Limit)
+		m.SelectedTab = "data"
+		return m, m.fetchAccountsCmd(m.Limit)
 	case AccountsFetchedMsg:
 		// Update model with fetched rows
-		m.Rows = msg.(AccountsFetchedMsg).Rows
-		m.SelectedTab = "data"
+		m.Rows = msg.Rows
 		m.Loading = false
 		return m, nil
 	case ToggleModalMsg:
@@ -115,7 +115,7 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		m.ShowToast = false
 		return m, nil
 	case TabChangeMsg:
-		m.SelectedTab = msg.(TabChangeMsg).Tab
+		m.SelectedTab = msg.Tab
 		return m, nil
 	default:
 		return m, nil
@@ -294,7 +294,8 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 
 // fetchAccountsCmd creates a Cmd that fetches accounts via JS and returns a Msg.
 // It uses the provided limit value for the SOQL query.
-func fetchAccountsCmd(limit string) masc.Cmd {
+func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
+	m.Loading = true
 	return func() masc.Msg {
 		// Build query with dynamic LIMIT
 		url := "/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+" + limit
