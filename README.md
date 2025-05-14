@@ -2,7 +2,7 @@
 ## Masc (Go WASM Apps) + SLDS on Salesforce
 
 This repository provides libraries for building applications for Salesforce's
-Lightning Experience in Go using SLDS-styled [masc](https://github.com/octoberswimmer.com/masc) components, which follow the [Elm Architecture](https://guide.elm-lang.org/architecture/).
+Lightning Experience in Go using SLDS-styled [masc](https://github.com/octoberswimmer/masc) components, which follow the [Elm Architecture](https://guide.elm-lang.org/architecture/).
 
 Thunder is made up of these masc components, a `thunder` LWC for running the
 compiled wasm applications, and a lightweight API designed to mirror the REST
