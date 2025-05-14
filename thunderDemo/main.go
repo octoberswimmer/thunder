@@ -58,6 +58,8 @@ type AppModel struct {
 	// Overlays
 	ShowModal bool
 	ShowToast bool
+	// Loading flag for data fetch
+	Loading bool
 }
 
 // Init returns no initial command.
@@ -67,6 +69,7 @@ func (m *AppModel) Init() masc.Cmd {
 	m.Limit = "5"
 	m.FilterMode = "contains"
 	m.SelectedTab = "actions"
+	m.Loading = false
 	return nil
 }
 
@@ -91,11 +94,13 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		return m, nil
 	case FetchAccountsMsg:
 		// Trigger asynchronous fetch command with selected limit
+		m.Loading = true
 		return m, fetchAccountsCmd(m.Limit)
 	case AccountsFetchedMsg:
 		// Update model with fetched rows
 		m.Rows = msg.(AccountsFetchedMsg).Rows
 		m.SelectedTab = "data"
+		m.Loading = false
 		return m, nil
 	case ToggleModalMsg:
 		// Toggle modal visibility
@@ -132,9 +137,17 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 			send(ShowToastMsg{})
 		}),
 	}
-	// Data pane: filters and table
+	// Data pane: spinner, filters, and table
 	var data []masc.MarkupOrChild
-	if len(m.Rows) > 0 {
+	if m.Loading {
+		// Show spinner while loading
+		data = append(data,
+			elem.Div(
+				masc.Markup(masc.Class("slds-m-top_medium", "slds-align_absolute-center")),
+				components.Spinner("medium"),
+			),
+		)
+	} else if len(m.Rows) > 0 {
 		// Limit select
 		data = append(data,
 			elem.Div(
@@ -197,6 +210,16 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 			if match && (!m.FilterAOnly || strings.Contains(lower, "a")) {
 				filtered = append(filtered, r)
 			}
+		}
+		// Show filtering progress
+		if len(m.Rows) > 0 {
+			percent := len(filtered) * 100 / len(m.Rows)
+			data = append(data,
+				elem.Div(
+					masc.Markup(masc.Class("slds-m-top_medium")),
+					components.ProgressBar(percent),
+				),
+			)
 		}
 		// Data table
 		data = append(data,

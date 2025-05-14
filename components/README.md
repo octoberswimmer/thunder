@@ -14,7 +14,9 @@
 - Checkbox (boolean input)
  - RadioGroup (single-choice options)
  - Tabs (navigation with content panels)
- - Page (layout wrapper for header and content)
+- Page (layout wrapper for header and content)
+- Spinner (loading indicator)
+- ProgressBar (horizontal progress indicator)
   
 ## Installation
 Add Thunder as a dependency in your Go WASM module:
