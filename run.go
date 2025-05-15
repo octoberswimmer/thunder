@@ -1,3 +1,6 @@
+//go:build js && !dev
+// +build js,!dev
+
 package thunder
 
 import (

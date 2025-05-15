@@ -52,4 +52,25 @@ Getting Started:
 5. Open **Thunder Demo** Tab in your org.
 6. Click **Fetch Accounts** to see a data table rendered from your Go WASM app.
 
+## Thunder Serve CLI
+
+Thunder provides a local development CLI to build and serve Thunder apps with automatic rebuilds.
+
+**Install the CLI:**
+```sh
+go install github.com/octoberswimmer/thunder/cmd/thunder@latest
+```
+
+**Usage:**
+```sh
+thunder --dir path/to/app --port 8000
+```
+
+**Flags:**
+- `--dir`: Path to the Thunder app directory (default `.`)
+- `--port`: Port to serve on (default `8000`)
+
+The CLI watches Go source files (`.go`, `go.mod`, `go.sum`) and automatically rebuilds the WASM bundle on changes. Refresh the browser to load the latest build.
+API REST requests (via `/services/`) are automatically proxied through your active Salesforce CLI session. Be sure to run `force login` beforehand.
+
 For details on implementing additional SLDS components, see `THUNDER_CHECKLIST.md`.
