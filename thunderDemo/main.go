@@ -197,6 +197,25 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				}),
 			),
 		)
+		// Lookup filter for names
+		// Build suggestions list from all account names
+		var suggestions []components.LookupOption
+		for _, r := range m.Rows {
+			name := r["Name"]
+			suggestions = append(suggestions, components.LookupOption{Label: name, Value: name})
+		}
+		data = append(data,
+			elem.Div(
+				masc.Markup(masc.Class("slds-m-top_medium")),
+				components.Lookup(
+					"Select by Name",
+					suggestions,
+					m.InputValue,
+					func(val string) { send(InputMsg{Value: val}) },
+					func(val string) { send(InputMsg{Value: val}) },
+				),
+			),
+		)
 		// Apply filters
 		var filtered []map[string]string
 		query := strings.ToLower(m.InputValue)

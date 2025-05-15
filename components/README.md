@@ -16,6 +16,7 @@
  - Tabs (navigation with content panels)
 - Page (layout wrapper for header and content)
 - Spinner (loading indicator)
+- Lookup / Autocomplete (in-page suggestions)
 - ProgressBar (horizontal progress indicator)
   
 ## Installation

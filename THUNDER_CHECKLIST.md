@@ -22,6 +22,7 @@ We aim to provide a suite of SLDS-styled components under `github.com/octoberswi
 - [x] Progress Indicator
 - [ ] Lookup / Autocomplete
 - [x] Spinner / Loading Indicator
+- [ ] Lookup / Autocomplete
 - [ ] Badge / Pill
 - [ ] Icon
 
