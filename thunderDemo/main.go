@@ -42,7 +42,11 @@ type ShowToastMsg struct{}
 type TabChangeMsg struct{ Tab string }
 
 // HideToastMsg represents closing the toast notification.
+// HideToastMsg represents closing the toast notification.
 type HideToastMsg struct{}
+
+// QueryErrorMsg carries an error string when a query fails.
+type QueryErrorMsg struct{ Err string }
 
 // AppModel holds application state (input value, fetch limit, checkbox filter, rows, modal/toast visibility).
 type AppModel struct {
@@ -55,9 +59,12 @@ type AppModel struct {
 	SelectedTab string
 	// Data
 	Rows []map[string]string
-	// Overlays
-	ShowModal bool
-	ShowToast bool
+	// Overlays and toast state
+	ShowModal    bool
+	ShowToast    bool
+	ToastVariant components.ToastVariant
+	ToastHeader  string
+	ToastMessage string
 	// Loading flag for data fetch
 	Loading bool
 }
@@ -102,13 +109,24 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		m.Rows = msg.Rows
 		m.Loading = false
 		return m, nil
+	case QueryErrorMsg:
+		// Display error toast on query failure
+		m.Loading = false
+		m.ShowToast = true
+		m.ToastVariant = components.VariantError
+		m.ToastHeader = "Error"
+		m.ToastMessage = msg.Err
+		return m, autoHideToastCmd()
 	case ToggleModalMsg:
 		// Toggle modal visibility
 		m.ShowModal = !m.ShowModal
 		return m, nil
 	case ShowToastMsg:
-		// Show toast notification and schedule auto-hide
+		// Show success toast notification and schedule auto-hide
 		m.ShowToast = true
+		m.ToastVariant = components.VariantSuccess
+		m.ToastHeader = "Success"
+		m.ToastMessage = "This is a toast notification."
 		return m, autoHideToastCmd()
 	case HideToastMsg:
 		// Hide toast notification
@@ -154,7 +172,12 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.Select(
 					"Limit",
-					[]components.SelectOption{{Label: "5", Value: "5"}, {Label: "10", Value: "10"}, {Label: "20", Value: "20"}},
+					[]components.SelectOption{
+						{Label: "5", Value: "5"},
+						{Label: "10", Value: "10"},
+						{Label: "20", Value: "20"},
+						{Label: "5,000", Value: "5000"},
+					},
 					m.Limit,
 					func(e *masc.Event) {
 						send(LimitChangeMsg{Limit: e.Target.Get("value").String()})
@@ -281,29 +304,10 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 	// Append toast notification if toggled
 	if m.ShowToast {
 		children = append(children,
-			components.Toast(components.VariantSuccess,
-				"Success",
-				"This is a toast notification.",
-				func(e *masc.Event) { send(HideToastMsg{}) },
-			),
-		)
-	}
-	// Optionally append modal and toast overlays
-	if m.ShowModal {
-		children = append(children,
-			components.Modal("Demo Modal",
-				masc.Text("This is a demo modal"),
-				components.Button("Close", components.VariantNeutral, func(e *masc.Event) {
-					send(ToggleModalMsg{})
-				}),
-			),
-		)
-	}
-	if m.ShowToast {
-		children = append(children,
-			components.Toast(components.VariantSuccess,
-				"Success",
-				"This is a toast notification.",
+			components.Toast(
+				m.ToastVariant,
+				m.ToastHeader,
+				m.ToastMessage,
 				func(e *masc.Event) { send(HideToastMsg{}) },
 			),
 		)
@@ -316,13 +320,15 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 	m.Loading = true
 	return func() masc.Msg {
-		// Build query with dynamic LIMIT
-		url := "/services/data/v58.0/query?q=SELECT+Name+FROM+Account+LIMIT+" + limit
-		data := api.Get(url)
-		var result map[string]any
-		err := json.Unmarshal(data, &result)
+		// Perform SOQL query via Query API
+		soql := fmt.Sprintf("SELECT Name FROM Account LIMIT %s", limit)
+		data, err := api.Query(soql)
 		if err != nil {
-			panic(err.Error())
+			return QueryErrorMsg{Err: err.Error()}
+		}
+		var result map[string]any
+		if err := json.Unmarshal(data, &result); err != nil {
+			return QueryErrorMsg{Err: err.Error()}
 		}
 		recs := result["records"].([]any)
 		rows := make([]map[string]string, len(recs))
