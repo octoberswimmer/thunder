@@ -1,23 +1,34 @@
-# Thunder Serve CLI Checklist
+# Thunder CLI Checklist
 
-This checklist tracks the implementation of a `thunder serve` CLI tool to build and serve Thunder WASM apps locally.
+This checklist tracks the implementation of the `thunder` CLI with `serve` and `deploy` subcommands.
 
-- [ ] Scaffold CLI directory `cmd/thunder` and `main.go` with basic flag parsing (port, app dir)
-- [ ] Accept `--port` (default 8000) and `--dir` (path to Thunder app, default `.`)
-- [ ] Implement `buildWASM()`:
-  - Use `GOOS=js GOARCH=wasm go build -o bundle.wasm` in a temp workspace
-  - Apply source overlay to:
-    - Replace `thunder.Run(...)` with a dev-mode mount (e.g., `masc.RenderIntoNode(...)`)
-  - [x] Replace `api.Get` calls to proxy via the current Salesforce session (using Force CLI library)
-- [ ] Generate `index.html` that loads:
-  - `wasm_exec.js` from Go SDK
-  - `bundle.wasm`
-  - Injects/links SLDS CSS into the page (via static resource or CDN)
-  - Initializes the WASM module and bootstraps the app
-- [ ] Start HTTP server:
-  - Serve `index.html`, `wasm_exec.js`, `bundle.wasm`, and static resources
-  - Auto-reload on rebuild
-- [ ] Watch source files (Go code) and rebuild/reload on changes
-- [ ] Provide CLI help and usage examples
-- [ ] Test against `thunderDemo` sample app
-- [ ] Document `thunder serve` usage in `README.md`
+- [x] Scaffold `cmd/thunder` directory with `main.go` and basic flag parsing
+- [x] Migrate CLI to use Cobra with root command and subcommands
+
+## Serve Subcommand
+- [x] Implement `thunder serve` subcommand
+  - [x] Validate that the serve directory contains a `main` package (using `go list`)
+  - [x] Fetch Salesforce session (instance URL, access token) via Force CLI library
+  - [x] Build WASM bundle in dev mode (`GOOS=js GOARCH=wasm`, `-tags dev`)
+  - [x] Automatically open default web browser at `http://localhost:<port>`
+  - [x] Start HTTP server:
+    - Serve `bundle.wasm`, `wasm_exec.js`, `index.html`, and static assets
+    - Proxy `/services/...` REST calls to Salesforce org
+    - Watch source files and auto-rebuild on changes
+
+## Deploy Subcommand
+- [x] Implement `thunder deploy` subcommand
+- [x] Embed metadata templates using `//go:embed` (Apex classes, LWC, static resource metadata)
+  - [x] Build WASM bundle for production (omit `dev` tag)
+  - [x] Generate metadata folder structure in-memory:
+    - Static resource for WASM bundle
+    - `GoBridge.cls` and `GoBridgeTest.cls`
+    - LWC components (`go`, `thunder`, and user app)
+  - [x] Deploy metadata to org via Force CLI library
+  - [x] Add CustomTab metadata when `--tab` flag is set
+  - [x] Open browser to `/lightning/n/<app>` after deploy with `--tab`
+
+## Common Tasks
+- [x] Provide CLI help and usage examples
+- [x] Write tests for Cobra commands (`serve` and `deploy`)
+- [x] Document new commands in `README.md`

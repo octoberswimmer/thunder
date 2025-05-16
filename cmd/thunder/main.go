@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,72 +8,63 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
+	salesforce "github.com/octoberswimmer/thunder/salesforce"
+	"golang.org/x/tools/go/packages"
+
+	desktop "github.com/ForceCLI/force/desktop"
 	forcecli "github.com/ForceCLI/force/lib"
 	"github.com/fsnotify/fsnotify"
+	"github.com/spf13/cobra"
 )
 
-// currentBuildDir holds the latest build output directory; buildMutex protects access.
+// global state for serve command
 var (
+	servePort       int
+	serveDir        string
 	currentBuildDir string
 	buildMutex      sync.RWMutex
 	// instanceURL and accessToken for Salesforce REST proxy
 	instanceURL string
 	accessToken string
+	// deploy command flags
+	deployDir string
+	deployTab bool
 )
 
-// Usage: thunder --dir path/to/app --port 8000
+// root command
+var rootCmd = &cobra.Command{Use: "thunder"}
+
+// serve command
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Build and serve the Thunder app locally",
+	RunE:  runServe,
+}
+
+// deploy command stub
+var deployCmd = &cobra.Command{
+	Use:   "deploy",
+	Short: "Deploy the Thunder app to a Salesforce org",
+	RunE:  runDeploy,
+}
+
+func init() {
+	// serve flags
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8000, "Port to serve on")
+	serveCmd.Flags().StringVarP(&serveDir, "dir", "d", ".", "Path to Thunder app directory")
+	// deploy flags
+	deployCmd.Flags().StringVarP(&deployDir, "dir", "d", ".", "Path to Thunder app directory")
+	deployCmd.Flags().BoolVarP(&deployTab, "tab", "t", false, "Deploy and open a CustomTab for the app")
+	// add subcommands
+	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(deployCmd)
+}
+
 func main() {
-	// CLI flags
-	port := flag.Int("port", 8000, "Port to serve on")
-	dir := flag.String("dir", ".", "Path to Thunder app directory")
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: thunder --dir PATH --port PORT\n")
-		flag.PrintDefaults()
-	}
-	flag.Parse()
-
-	// Validate app directory
-	info, err := os.Stat(*dir)
-	if err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "Invalid app directory: %s\n", *dir)
-		os.Exit(1)
-	}
-
-	// Fetch Salesforce auth info for proxying API requests
-	instanceURL, accessToken, err = fetchAuthInfo()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching Salesforce auth info: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Building WASM bundle in %s...\n", *dir)
-	buildDir, err := buildWASM(*dir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error building WASM: %v\n", err)
-		os.Exit(1)
-	}
-	// prepare for serving and start watching for changes
-	buildMutex.Lock()
-	currentBuildDir = buildDir
-	buildMutex.Unlock()
-	go watchAndRebuild(*dir)
-
-	fmt.Printf("Serving Thunder app on port %d (watching %s)...\n", *port, *dir)
-	// serve files from the latest build directory, rebuilding on changes
-	// Proxy Salesforce REST API requests
-	http.HandleFunc("/services/", proxyHandler)
-	// Serve files from the latest build directory
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		buildMutex.RLock()
-		dirPath := currentBuildDir
-		buildMutex.RUnlock()
-		fs := http.FileServer(http.Dir(dirPath))
-		fs.ServeHTTP(w, r)
-	})
-	address := fmt.Sprintf(":%d", *port)
-	if err := http.ListenAndServe(address, nil); err != nil {
-		fmt.Fprintf(os.Stderr, "Error starting server: %v\n", err)
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
@@ -260,4 +250,230 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+}
+
+// runServe builds the WASM bundle and serves the app with auto-rebuild.
+func runServe(cmd *cobra.Command, args []string) error {
+	// Validate app directory
+	info, err := os.Stat(serveDir)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("Invalid app directory: %s", serveDir)
+	}
+	cfg := &packages.Config{
+		Mode: packages.NeedName,
+		Dir:  serveDir,
+	}
+	pkgs, _ := packages.Load(cfg, ".")
+	if len(pkgs) == 0 || pkgs[0].Name != "main" {
+		return fmt.Errorf("serve directory %s is not package main", serveDir)
+	}
+	// Fetch Salesforce auth info
+	instanceURL, accessToken, err = fetchAuthInfo()
+	if err != nil {
+		return fmt.Errorf("Error fetching Salesforce auth info: %w", err)
+	}
+	fmt.Printf("Building WASM bundle in %s...\n", serveDir)
+	buildDir, err := buildWASM(serveDir)
+	if err != nil {
+		return fmt.Errorf("Error building WASM: %w", err)
+	}
+	buildMutex.Lock()
+	currentBuildDir = buildDir
+	buildMutex.Unlock()
+	go watchAndRebuild(serveDir)
+
+	fmt.Printf("Serving Thunder app on port %d (watching %s)...\n", servePort, serveDir)
+	// Open default browser to the served app
+	urlStr := fmt.Sprintf("http://localhost:%d", servePort)
+	go func() {
+		if err := desktop.Open(urlStr); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open browser: %v\n", err)
+		}
+	}()
+	// Proxy Salesforce REST API requests
+	http.HandleFunc("/services/", proxyHandler)
+	// Serve files from the latest build directory
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		buildMutex.RLock()
+		dirPath := currentBuildDir
+		buildMutex.RUnlock()
+		fs := http.FileServer(http.Dir(dirPath))
+		fs.ServeHTTP(w, r)
+	})
+	address := fmt.Sprintf(":%d", servePort)
+	if err := http.ListenAndServe(address, nil); err != nil {
+		return fmt.Errorf("Error starting server: %w", err)
+	}
+	return nil
+}
+
+// runDeploy is a stub for the deploy subcommand.
+func runDeploy(cmd *cobra.Command, args []string) error {
+	// Validate app directory
+	info, err := os.Stat(deployDir)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("Invalid app directory: %s", deployDir)
+	}
+	cfg := &packages.Config{
+		Mode: packages.NeedName,
+		Dir:  serveDir,
+	}
+	pkgs, _ := packages.Load(cfg, ".")
+	if len(pkgs) == 0 || pkgs[0].Name != "main" {
+		return fmt.Errorf("serve directory %s is not package main", serveDir)
+	}
+	// Build production WASM bundle
+	fmt.Printf("Building production WASM bundle in %s...\n", deployDir)
+	absDir, _ := filepath.Abs(deployDir)
+	resourceName := filepath.Base(absDir)
+	buildDir, err := buildProdWASM(deployDir)
+	if err != nil {
+		return fmt.Errorf("Error building production WASM: %w", err)
+	}
+	fmt.Printf("Built production bundle at %s\n", buildDir)
+	// Prepare metadata files in memory
+	files := make(forcecli.ForceMetadataFiles)
+	// WASM static resource
+	wasmData, err := os.ReadFile(filepath.Join(buildDir, "bundle.wasm"))
+	if err != nil {
+		return err
+	}
+	// Add WASM bundle as a StaticResource with .resource extension
+	files["staticresources/"+resourceName+".resource"] = wasmData
+	staticResourceMetadata := `<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+	<cacheControl>Private</cacheControl>
+	<contentType>application/wasm</contentType>
+</StaticResource>`
+	files["staticresources/"+resourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
+	// Apex classes
+	apexTemplates := []struct{ src, dst string }{
+		{"classes/GoBridge.cls", "classes/GoBridge.cls"},
+		{"classes/GoBridge.cls-meta.xml", "classes/GoBridge.cls-meta.xml"},
+		{"classes/GoBridgeTest.cls", "classes/GoBridgeTest.cls"},
+		{"classes/GoBridgeTest.cls-meta.xml", "classes/GoBridgeTest.cls-meta.xml"},
+	}
+	for _, t := range apexTemplates {
+		if data, err := salesforce.SalesforceMetadataFS.ReadFile(t.src); err == nil {
+			files[t.dst] = data
+		}
+	}
+	// LWC components (runtime and wrapper)
+	for _, comp := range []string{"go", "thunder"} {
+		base := "lwc/" + comp
+		entries, _ := salesforce.SalesforceMetadataFS.ReadDir(base)
+		for _, e := range entries {
+			if data, err := salesforce.SalesforceMetadataFS.ReadFile(base + "/" + e.Name()); err == nil {
+				files["lwc/"+comp+"/"+e.Name()] = data
+			}
+		}
+	}
+	// Generate LWC for the deployed app
+	appComp := resourceName
+	appClass := strings.Title(appComp)
+	// HTML
+	html := fmt.Sprintf(`<template>
+    <c-thunder app={appUrl}></c-thunder>
+</template>`)
+	files[fmt.Sprintf("lwc/%s/%s.html", appComp, appComp)] = []byte(html)
+	// JS
+	js := fmt.Sprintf(`import { LightningElement, api } from 'lwc';
+import APP_URL from '@salesforce/resourceUrl/%s';
+
+export default class %s extends LightningElement {
+    @api appUrl = APP_URL;
+}`, appComp, appClass)
+	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
+	// JS meta
+	meta := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>58.0</apiVersion>
+    <isExposed>true</isExposed>
+    <masterLabel>%s</masterLabel>
+    <targets>
+        <target>lightning__AppPage</target>
+        <target>lightning__RecordPage</target>
+        <target>lightning__Tab</target>
+    </targets>
+</LightningComponentBundle>`, appClass)
+	files[fmt.Sprintf("lwc/%s/%s.js-meta.xml", appComp, appComp)] = []byte(meta)
+	// If requested, generate a CustomTab for the deployed app
+	if deployTab {
+		tabXml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>%s</label>
+    <lwcComponent>%s</lwcComponent>
+    <motif>Custom75: Default</motif>
+</CustomTab>`, appClass, appComp)
+		files[fmt.Sprintf("tabs/%s.tab-meta.xml", appComp)] = []byte(tabXml)
+	}
+	// Generate package.xml for the deployment
+	pkg := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types>
+    <members>%s</members>
+    <name>StaticResource</name>
+  </types>
+  <types>
+    <members>GoBridge</members>
+    <members>GoBridgeTest</members>
+    <name>ApexClass</name>
+  </types>
+  <types>
+    <members>go</members>
+    <members>thunder</members>
+    <members>%s</members>
+    <name>LightningComponentBundle</name>
+  </types>
+  <version>58.0</version>
+</Package>`, resourceName, resourceName)
+	files["package.xml"] = []byte(pkg)
+	// Perform deployment
+	creds, err := forcecli.ActiveCredentials(false)
+	if err != nil {
+		return fmt.Errorf("failed to load Salesforce credentials: %w", err)
+	}
+	fm := forcecli.NewForce(&creds)
+	opts := forcecli.ForceDeployOptions{SinglePackage: true}
+	fmt.Printf("Deploying metadata to %s...\n", creds.InstanceUrl)
+	result, err := fm.Metadata.Deploy(files, opts)
+	if err != nil {
+		return fmt.Errorf("deployment failed: %w", err)
+	}
+	// Cleanup temporary build directory
+	if rmErr := os.RemoveAll(buildDir); rmErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to remove temp dir %s: %v\n", buildDir, rmErr)
+	}
+	fmt.Printf("Deployment complete: %+v\n", result)
+	// Open new tab in Salesforce if requested
+	if deployTab {
+		tabUrl := fmt.Sprintf("%s/lightning/n/%s", creds.InstanceUrl, resourceName)
+		if err := desktop.Open(tabUrl); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open tab URL: %v\n", err)
+		}
+	}
+	return nil
+}
+
+// buildProdWASM compiles the Go app in appDir to WebAssembly for production.
+func buildProdWASM(appDir string) (string, error) {
+	// create temporary build directory
+	buildDir, err := os.MkdirTemp("", "thunder-deploy-*")
+	if err != nil {
+		return "", err
+	}
+	outWasm := filepath.Join(buildDir, "bundle.wasm")
+	cmd := exec.Command("go", "build", "-o", outWasm)
+	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+	abs, err := filepath.Abs(appDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute path: %w", err)
+	}
+	cmd.Dir = abs
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return buildDir, nil
 }

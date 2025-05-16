@@ -5,25 +5,22 @@ This repository provides libraries for building applications for Salesforce's
 Lightning Experience in Go using SLDS-styled [masc](https://github.com/octoberswimmer/masc) components, which follow the [Elm Architecture](https://guide.elm-lang.org/architecture/).
 
 Thunder is made up of these masc components, a `thunder` LWC for running the
-compiled wasm applications, and a lightweight API designed to mirror the REST
-API.
+compiled wasm applications, a lightweight API designed to mirror the REST
+API, and a CLI to make development a joy.
 
 Repository Structure:
 ```
-.                   # root
-├── components/      # Thunder SLDS components (Go masc components)
-│   ├── button.go    # SLDS button
-│   └── datatable.go # SLDS data table
-├── main/            # Salesforce metadata (sfdx source format)
-│   ├── default/
-│   │   ├── classes/         # Apex classes (GoBridge + tests)
-│   │   ├── lwc/             # Lightning Web Components (thunder, thunderDemo)
-│   │   └── staticresources/ # WASM binaries (hello.wasm, masc.wasm)
-├── thunderDemo/     # Go MASC application source (uses Thunder components)
-│   ├── main.go       # Masc program rendering button and data table
-│   └── go.mod        # Go module for thunderDemo
-├── Makefile         # Builds thunderDemo/main.go to thunderDemo.wasm
-└── README.md        # This file
+. (repo root)
+├ cmd/thunder/           CLI source (Cobra commands: serve, deploy)
+│  ├ main.go             CLI implementation
+│  ├ main_test.go        CLI command tests
+├ salesforce/            embedded metadata templates
+│  ├ classes/            Apex classes
+│  ├ staticresources/    StaticResource metadata
+│  └ lwc/                LWC wrappers (`go`, `thunder`)
+├ components/            MASC components for Thunder apps
+├ api/                   REST proxy for WASM apps
+└ thunderDemo/           sample Go MASC application
 ```
 
 Key parts:
@@ -31,44 +28,61 @@ Key parts:
   - Loads a Go WASM app as static resource, injects global `get`/`post`/`put`/`delete` functions, and runs the app.
 - **Thunder SLDS Components** (`components/`):
   - Go library offering SLDS-styled Masc components like `Button` and `DataTable`.
+- **Apex GoBridge** (`salesforce/classes/GoBridge.cls`):
+  - `@AuraEnabled callRest(...)` to map REST API calls to Apex.
+- **thunder CLI** (`cmd/thunder`):
+  -  Command-line tool to serve a Thunder app while in development and, and to
+	  build and deploy it to a Salesforce org.
 - **thunderDemo MASC app** (`thunderDemo/`):
   - Implements a Masc Model with a button and data table, using Thunder SLDS components.
-- **thunderDemo LWC** (`c:thunder-demo`):
-  - Passes `thunderDemo.wasm` into `thunder` and mounts it in Lightning pages.
-- **Apex GoBridge** (`main/default/classes/GoBridge.cls`):
-  - `@AuraEnabled callRest(...)` for REST and native SOQL calls.
 
 Getting Started:
 1. Install dependencies:
    - Go 1.24+ (with WASM support)
-   - Force CLI or Salesforce CLI (sfdx)
-2. Build the sample thunderDemo Go WASM app:
+   - Force CLI
+2. Run the thunderDemo app locally:
    ```sh
-   make
+   $ force login
+   $ thunder -d ./thunderDemo
    ```
-   This compiles `thunderDemo/main.go` to `main/default/staticresources/thunderDemo.wasm`.
-3. Deploy to Salesforce using `force` or `sfdx`.
-5. Grant yourself access to **Thunder Demo** Tab.
-5. Open **Thunder Demo** Tab in your org.
-6. Click **Fetch Accounts** to see a data table rendered from your Go WASM app.
+   This compiles `thunderDemo/main.go` and starts a web server to serve the app.
+3. Deploy to Salesforce using `thunder deploy -d ./thunderDemo --tab`
+4. Click **Fetch Accounts** to see a data table rendered from your Thunder app.
 
-## Thunder Serve CLI
+## Thunder CLI
+Thunder provides a CLI with two subcommands, `serve` and `deploy`, for local development and deployment of Go WASM apps on Salesforce.
 
-Thunder provides a local development CLI to build and serve Thunder apps with automatic rebuilds.
-
-**Install the CLI:**
+### Installation
 ```sh
 go install github.com/octoberswimmer/thunder/cmd/thunder@latest
 ```
 
-**Usage:**
+
+### Usage
 ```sh
-thunder --dir path/to/app --port 8000
+thunder serve --dir PATH --port PORT   # build & serve locally
+thunder deploy --dir PATH [--tab]      # deploy app to Salesforce org
 ```
 
-**Flags:**
-- `--dir`: Path to the Thunder app directory (default `.`)
-- `--port`: Port to serve on (default `8000`)
+#### serve
+- `--dir, -d`: Path to the Thunder app directory (default `.`)
+- `--port, -p`: Port to serve on (default `8000`)
+
+`thunder serve`:
+- Builds the app in dev mode (`GOOS=js GOARCH=wasm -tags dev`).
+- Serves on `http://localhost:PORT`, auto-rebuilds on file changes.
+- Proxies `/services/...` REST calls to your Salesforce org via CLI auth.
+- Opens your default browser to the served app URL.
+
+#### deploy
+- `--dir, -d`: Path to the Thunder app directory
+- `--tab, -t`: Also deploy and open a CustomTab for the app
+
+`thunder deploy`:
+- Builds a production WebAssembly bundle.
+- Packages metadata (static resource, Apex classes, LWC wrappers, app LWC) in-memory.
+- Generates `package.xml` and deploys all metadata via your CLI session.
+- With `--tab`, creates a CustomTab and opens `/lightning/n/<app>` in your browser.
 
 The CLI watches Go source files (`.go`, `go.mod`, `go.sum`) and automatically rebuilds the WASM bundle on changes. Refresh the browser to load the latest build.
 API REST requests (via `/services/`) are automatically proxied through your active Salesforce CLI session. Be sure to run `force login` beforehand.
