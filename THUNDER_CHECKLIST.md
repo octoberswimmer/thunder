@@ -20,13 +20,7 @@ We aim to provide a suite of SLDS-styled components under `github.com/octoberswi
 - [x] Tabs
 - [ ] Breadcrumbs (postpone)
 - [x] Progress Indicator
-- [ ] Lookup / Autocomplete
+- [x] Lookup / Autocomplete
 - [x] Spinner / Loading Indicator
-- [ ] Lookup / Autocomplete
 - [ ] Badge / Pill
 - [ ] Icon
-
-## Next Steps
-1. Implement **Data Table**: start with `components/datatable.go`.
-2. Integrate DataTable into the sample MASC app to render Account records.
-3. Proceed through the above list in priority order based on usage.
