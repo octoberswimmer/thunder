@@ -154,6 +154,14 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		components.Button("Show Toast", components.VariantNeutral, func(e *masc.Event) {
 			send(ShowToastMsg{})
 		}),
+		// Demo Badge and Pill components
+		components.Badge("Demo Badge"),
+		components.Pill("Tag1", func(e *masc.Event) {
+			send(ShowToastMsg{})
+		}),
+		components.Pill("Tag2", nil),
+		// Demo Icon component
+		components.Icon(components.UtilityIcon, "settings", components.IconSmall),
 	}
 	// Data pane: spinner, filters, and table
 	var data []masc.MarkupOrChild
@@ -289,7 +297,16 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 	card := components.Card("Accounts", tabs)
 	// Page wraps header and card
 	pageLayout := components.Page(header, card)
-	children := []masc.MarkupOrChild{pageLayout}
+	// Include breadcrumb at top with padding and margin
+	rawCrumbs := components.Breadcrumb([]components.BreadcrumbOption{
+		{Label: "Home", Href: "#"},
+		{Label: "Thunder Demo", Href: "#"},
+	})
+	crumbs := elem.Div(
+		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-bottom_small")),
+		rawCrumbs,
+	)
+	children := []masc.MarkupOrChild{crumbs, pageLayout}
 	// Append modal overlay if toggled
 	if m.ShowModal {
 		children = append(children,

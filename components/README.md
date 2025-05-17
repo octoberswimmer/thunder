@@ -7,8 +7,7 @@
 - DataTable (basic tabular display)
 - Card (container with header and body)
 - Page Header (page-level heading with optional subtitle and actions)
-- Modal (dialog overlay)
-- Toast (notification overlay)
+- Breadcrumbs (navigation hierarchy)
 - TextInput (labeled text input)
 - Select (dropdown)
 - Checkbox (boolean input)
@@ -57,6 +56,15 @@ rows := []map[string]string{
 table := components.DataTable(headers, rows)
 ```
 
+### Icon
+Render an SLDS icon:
+```go
+icon := components.Icon(
+    components.UtilityIcon, // icon category (utility, action, standard)
+    "close",               // icon name
+    components.IconSmall,   // icon size (small, medium, large)
+)
+```
 ## Integration with Masc
 In your Masc model, render components just like any other Masc component:
 
@@ -83,5 +91,5 @@ func main() {
 ```
 
 ## Roadmap
-See `THUNDER_COMPONENTS_CHECKLIST.md` for upcoming SLDS components:
+See `THUNDER_CHECKLIST.md` for upcoming SLDS components:
 - Card, Modal, Toast, Inputs, Tabs, Breadcrumbs, Progress Indicators, and more.

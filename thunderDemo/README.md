@@ -2,6 +2,14 @@
 
 This directory contains a minimal Go application skeleton that demonstrates calling the Salesforce REST proxy injected by the Thunder LWC.
 
+## UI Demonstration
+
+This demo includes the following SLDS components:
+- Badge: displays a simple label
+- Pill: displays a pill with an optional remove button (clicking remove shows a toast)
+- Icon: renders an SLDS icon (utility/action/standard)
+- Breadcrumbs: displays navigation path (Home > Demo)
+
 Steps to build and deploy:
 1. Initialize the Go module:
    ```sh
