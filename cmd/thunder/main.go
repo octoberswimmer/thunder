@@ -151,19 +151,49 @@ func watchAndRebuild(appDir string) {
 	}
 	defer watcher.Close()
 
-	// watch directories recursively
-	err = filepath.Walk(appDir, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info.IsDir() {
-			return watcher.Add(path)
-		}
-		return nil
-	})
+	// watch app and local module directories recursively
+	// Determine module directories via `go list`
+	gomodcacheBytes, err := exec.Command("go", "env", "GOMODCACHE").Output()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error walking project for file watching: %v\n", err)
-		return
+		fmt.Fprintf(os.Stderr, "Error getting GOMODCACHE: %v\n", err)
+	}
+	gomodcache := strings.TrimSpace(string(gomodcacheBytes))
+
+	listCmd := exec.Command("go", "list", "-C", appDir, "-m", "-mod=readonly", "-f", "{{.Dir}}", "all")
+	listCmd.Env = os.Environ()
+	out, err := listCmd.Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error listing modules: %v\n", err)
+	}
+	roots := make(map[string]struct{})
+	// always include the app directory
+	roots[appDir] = struct{}{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		// skip modules in GOMODCACHE
+		if strings.HasPrefix(line, gomodcache) {
+			continue
+		}
+		roots[line] = struct{}{}
+	}
+	// Walk and watch each root directory
+	for root := range roots {
+		err = filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info.IsDir() {
+				if watchErr := watcher.Add(path); watchErr != nil {
+					fmt.Fprintf(os.Stderr, "Error watching %s: %v\n", path, watchErr)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error walking %s for file watching: %v\n", root, err)
+		}
 	}
 
 	for {
@@ -316,11 +346,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 	cfg := &packages.Config{
 		Mode: packages.NeedName,
-		Dir:  serveDir,
+		Dir:  deployDir,
 	}
 	pkgs, _ := packages.Load(cfg, ".")
 	if len(pkgs) == 0 || pkgs[0].Name != "main" {
-		return fmt.Errorf("serve directory %s is not package main", serveDir)
+		return fmt.Errorf("serve directory %s is not package main", deployDir)
 	}
 	// Build production WASM bundle
 	fmt.Printf("Building production WASM bundle in %s...\n", deployDir)
