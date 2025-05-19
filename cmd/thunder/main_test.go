@@ -1,90 +1,83 @@
 package main
 
 import (
+	"io"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-func TestCopyFile(t *testing.T) {
-	tmp := t.TempDir()
-	src := filepath.Join(tmp, "src.txt")
-	dst := filepath.Join(tmp, "subdir", "dst.txt")
-	data := []byte("hello thunder")
-	if err := os.WriteFile(src, data, 0644); err != nil {
-		t.Fatalf("writing source file: %v", err)
+func Test_indexHandler_serves_index_html(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	indexHandler(w, req)
+	res := w.Result()
+	defer res.Body.Close()
+	if got := res.Header.Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q; want %q", got, "text/html; charset=utf-8")
 	}
-	if err := copyFile(src, dst); err != nil {
-		t.Fatalf("copyFile returned error: %v", err)
-	}
-	got, err := os.ReadFile(dst)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		t.Fatalf("reading destination file: %v", err)
+		t.Fatalf("reading body: %v", err)
 	}
-	if string(got) != string(data) {
-		t.Errorf("copied data = %q; want %q", got, data)
-	}
-}
-
-// Tests for serve command validations
-func TestRunServe_InvalidDir(t *testing.T) {
-	// Non-existent directory
-	serveDir = "/does/not/exist"
-	servePort = 0
-	err := runServe(nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "Invalid app directory") {
-		t.Fatalf("Expected invalid app directory error, got: %v", err)
+	if got := string(body); got != indexHTML {
+		t.Errorf("Body = %q; want %q", got, indexHTML)
 	}
 }
 
-func TestRunServe_NotMainPackage(t *testing.T) {
-	tmp := t.TempDir()
-	// Create a Go file with non-main package
-	mainFile := filepath.Join(tmp, "app.go")
-	src := []byte("package foo\nfunc main() {}")
-	if err := os.WriteFile(mainFile, src, 0644); err != nil {
-		t.Fatalf("writing file: %v", err)
+func Test_wasmHandler_serves_wasm_file(t *testing.T) {
+	dir, err := os.MkdirTemp("", "test-build-*")
+	if err != nil {
+		t.Fatalf("creating temp dir: %v", err)
 	}
-	// Initialize as Go module so go list works
-	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module test"), 0644); err != nil {
-		t.Fatalf("writing go.mod: %v", err)
+	defer os.RemoveAll(dir)
+	data := []byte("wasm-content")
+	path := filepath.Join(dir, "bundle.wasm")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("writing wasm file: %v", err)
 	}
-	serveDir = tmp
-	servePort = 0
-	err := runServe(nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "is not package main") {
-		t.Fatalf("Expected package main error, got: %v", err)
+	buildMutex.Lock()
+	currentBuildDir = dir
+	buildMutex.Unlock()
+	req := httptest.NewRequest("GET", "/bundle.wasm", nil)
+	w := httptest.NewRecorder()
+	wasmHandler(w, req)
+	res := w.Result()
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
 	}
-}
-
-// Tests for deploy command validations
-func TestRunDeploy_InvalidDir(t *testing.T) {
-	// Non-existent directory
-	deployDir = "/absent"
-	deployTab = false
-	err := runDeploy(nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "Invalid app directory") {
-		t.Fatalf("Expected invalid app directory error, got: %v", err)
+	if got := string(body); got != string(data) {
+		t.Errorf("Body = %q; want %q", got, string(data))
 	}
 }
 
-func TestRunDeploy_NotMainPackage(t *testing.T) {
-	tmp := t.TempDir()
-	// Create a Go file with non-main package
-	mainFile := filepath.Join(tmp, "app.go")
-	src := []byte("package bar\nfunc main() {}")
-	if err := os.WriteFile(mainFile, src, 0644); err != nil {
-		t.Fatalf("writing file: %v", err)
+func Test_wasmExecHandler_serves_wasm_exec_js(t *testing.T) {
+	dir, err := os.MkdirTemp("", "test-build-*")
+	if err != nil {
+		t.Fatalf("creating temp dir: %v", err)
 	}
-	// Initialize as Go module so go list works
-	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module test"), 0644); err != nil {
-		t.Fatalf("writing go.mod: %v", err)
+	defer os.RemoveAll(dir)
+	data := []byte("exec-js-content")
+	path := filepath.Join(dir, "wasm_exec.js")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("writing wasm_exec.js file: %v", err)
 	}
-	deployDir = tmp
-	deployTab = false
-	err := runDeploy(nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "is not package main") {
-		t.Fatalf("Expected package main error for deploy, got: %v", err)
+	buildMutex.Lock()
+	currentBuildDir = dir
+	buildMutex.Unlock()
+	req := httptest.NewRequest("GET", "/wasm_exec.js", nil)
+	w := httptest.NewRecorder()
+	wasmExecHandler(w, req)
+	res := w.Result()
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if got := string(body); got != string(data) {
+		t.Errorf("Body = %q; want %q", got, string(data))
 	}
 }

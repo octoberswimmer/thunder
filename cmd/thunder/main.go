@@ -34,6 +34,26 @@ var (
 	deployTab bool
 )
 
+// indexHTML is the HTML template served for the Thunder app root.
+const indexHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Thunder App</title>
+    <link rel="stylesheet" href="https://unpkg.com/@salesforce-ux/design-system@latest/assets/styles/salesforce-lightning-design-system.min.css">
+    <script src="wasm_exec.js"></script>
+    <script>
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("bundle.wasm"), go.importObject).then((result) => {
+            go.run(result.instance);
+        });
+    </script>
+</head>
+<body>
+    <div id="app"></div>
+</body>
+</html>`
+
 // root command
 var rootCmd = &cobra.Command{Use: "thunder"}
 
@@ -94,28 +114,6 @@ func buildWASM(appDir string) (string, error) {
 	wasmExecSrc := filepath.Join(runtime.GOROOT(), "lib", "wasm", "wasm_exec.js")
 	wasmExecDst := filepath.Join(buildDir, "wasm_exec.js")
 	if err := copyFile(wasmExecSrc, wasmExecDst); err != nil {
-		return "", err
-	}
-	// generate index.html to load WASM module
-	indexHTML := `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Thunder App</title>
-    <link rel="stylesheet" href="https://unpkg.com/@salesforce-ux/design-system@latest/assets/styles/salesforce-lightning-design-system.min.css">
-    <script src="wasm_exec.js"></script>
-    <script>
-        const go = new Go();
-        WebAssembly.instantiateStreaming(fetch("bundle.wasm"), go.importObject).then((result) => {
-            go.run(result.instance);
-        });
-    </script>
-</head>
-<body>
-    <div id="app"></div>
-</body>
-</html>`
-	if err := os.WriteFile(filepath.Join(buildDir, "index.html"), []byte(indexHTML), 0644); err != nil {
 		return "", err
 	}
 	return buildDir, nil
@@ -282,6 +280,28 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 }
 
+// wasmHandler serves the bundle.wasm file from the current build directory.
+func wasmHandler(w http.ResponseWriter, r *http.Request) {
+	buildMutex.RLock()
+	dirPath := currentBuildDir
+	buildMutex.RUnlock()
+	http.ServeFile(w, r, filepath.Join(dirPath, "bundle.wasm"))
+}
+
+// wasmExecHandler serves the wasm_exec.js file from the current build directory.
+func wasmExecHandler(w http.ResponseWriter, r *http.Request) {
+	buildMutex.RLock()
+	dirPath := currentBuildDir
+	buildMutex.RUnlock()
+	http.ServeFile(w, r, filepath.Join(dirPath, "wasm_exec.js"))
+}
+
+// indexHandler serves the indexHTML template directly.
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(indexHTML))
+}
+
 // runServe builds the WASM bundle and serves the app with auto-rebuild.
 func runServe(cmd *cobra.Command, args []string) error {
 	// Validate app directory
@@ -322,14 +342,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}()
 	// Proxy Salesforce REST API requests
 	http.HandleFunc("/services/", proxyHandler)
-	// Serve files from the latest build directory
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		buildMutex.RLock()
-		dirPath := currentBuildDir
-		buildMutex.RUnlock()
-		fs := http.FileServer(http.Dir(dirPath))
-		fs.ServeHTTP(w, r)
-	})
+	// Serve static assets
+	http.HandleFunc("/bundle.wasm", wasmHandler)
+	http.HandleFunc("/wasm_exec.js", wasmExecHandler)
+	// Serve index HTML
+	http.HandleFunc("/", indexHandler)
 	address := fmt.Sprintf(":%d", servePort)
 	if err := http.ListenAndServe(address, nil); err != nil {
 		return fmt.Errorf("Error starting server: %w", err)
