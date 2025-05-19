@@ -43,7 +43,7 @@ Getting Started:
 2. Run the thunderDemo app locally:
    ```sh
    $ force login
-   $ thunder -d ./thunderDemo
+   $ thunder ./thunderDemo
    ```
    This compiles `thunderDemo/main.go` and starts a web server to serve the app.
 3. Deploy to Salesforce using `thunder deploy -d ./thunderDemo --tab`
@@ -60,13 +60,12 @@ go install github.com/octoberswimmer/thunder/cmd/thunder@latest
 
 ### Usage
 ```sh
-thunder serve --dir PATH --port PORT   # build & serve locally
-thunder deploy --dir PATH [--tab]      # deploy app to Salesforce org
+thunder serve [dir] --port PORT   # build & serve locally (defaults to current dir)
+thunder deploy [dir] [--tab]      # deploy app to Salesforce org (defaults to current dir)
 ```
 
 #### serve
-- `--dir, -d`: Path to the Thunder app directory (default `.`)
-- `--port, -p`: Port to serve on (default `8000`)
+ - `--port, -p`: Port to serve on (default `8000`)
 
 `thunder serve`:
 - Builds the app in dev mode (`GOOS=js GOARCH=wasm -tags dev`).
@@ -75,8 +74,7 @@ thunder deploy --dir PATH [--tab]      # deploy app to Salesforce org
 - Opens your default browser to the served app URL.
 
 #### deploy
-- `--dir, -d`: Path to the Thunder app directory
-- `--tab, -t`: Also deploy and open a CustomTab for the app
+ - `--tab, -t`: Also deploy and open a CustomTab for the app
 
 `thunder deploy`:
 - Builds a production WebAssembly bundle.

@@ -59,24 +59,24 @@ var rootCmd = &cobra.Command{Use: "thunder"}
 
 // serve command
 var serveCmd = &cobra.Command{
-	Use:   "serve",
+	Use:   "serve [dir]",
 	Short: "Build and serve the Thunder app locally",
+	Args:  cobra.MaximumNArgs(1),
 	RunE:  runServe,
 }
 
 // deploy command stub
 var deployCmd = &cobra.Command{
-	Use:   "deploy",
+	Use:   "deploy [dir]",
 	Short: "Deploy the Thunder app to a Salesforce org",
+	Args:  cobra.MaximumNArgs(1),
 	RunE:  runDeploy,
 }
 
 func init() {
-	// serve flags
+	// serve flags (port only; app dir is optional positional arg)
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8000, "Port to serve on")
-	serveCmd.Flags().StringVarP(&serveDir, "dir", "d", ".", "Path to Thunder app directory")
-	// deploy flags
-	deployCmd.Flags().StringVarP(&deployDir, "dir", "d", ".", "Path to Thunder app directory")
+	// deploy flags (app dir is optional positional arg)
 	deployCmd.Flags().BoolVarP(&deployTab, "tab", "t", false, "Deploy and open a CustomTab for the app")
 	// add subcommands
 	rootCmd.AddCommand(serveCmd)
@@ -304,6 +304,12 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 // runServe builds the WASM bundle and serves the app with auto-rebuild.
 func runServe(cmd *cobra.Command, args []string) error {
+	// Determine app directory (optional positional argument)
+	if len(args) > 0 {
+		serveDir = args[0]
+	} else {
+		serveDir = "."
+	}
 	// Validate app directory
 	info, err := os.Stat(serveDir)
 	if err != nil || !info.IsDir() {
@@ -356,6 +362,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 // runDeploy is a stub for the deploy subcommand.
 func runDeploy(cmd *cobra.Command, args []string) error {
+	// Determine app directory (optional positional argument)
+	if len(args) > 0 {
+		deployDir = args[0]
+	} else {
+		deployDir = "."
+	}
 	// Validate app directory
 	info, err := os.Stat(deployDir)
 	if err != nil || !info.IsDir() {
