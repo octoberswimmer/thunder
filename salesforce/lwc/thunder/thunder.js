@@ -7,6 +7,13 @@ import Go from 'c/go';
 import callRest from '@salesforce/apex/GoBridge.callRest';
 
 export default class Thunder extends LightningElement {
+	@api set recordId(value) {
+		// Expose recordId from Lightning record page to Go WASM environment
+		globalThis.recordId = value;
+	}
+	get recordId() {
+		return globalThis.recordId;
+	}
 	// URL of the WASM app to load
 	@api app;
 	// Label to display on the console tab when navigation is enabled

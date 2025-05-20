@@ -430,17 +430,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Generate LWC for the deployed app
 	appComp := resourceName
 	appClass := strings.Title(appComp)
-	// HTML
-	html := fmt.Sprintf(`<template>
-    <c-thunder app={appUrl}></c-thunder>
-</template>`)
-	files[fmt.Sprintf("lwc/%s/%s.html", appComp, appComp)] = []byte(html)
 	// JS
-	js := fmt.Sprintf(`import { LightningElement, api } from 'lwc';
+	js := fmt.Sprintf(`import Thunder from 'c/thunder';
 import APP_URL from '@salesforce/resourceUrl/%s';
 
-export default class %s extends LightningElement {
-    @api appUrl = APP_URL;
+export default class %s extends Thunder {
+	connectedCallback() {
+		this.app = APP_URL;
+	}
 }`, appComp, appClass)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
 	// JS meta
@@ -451,9 +448,15 @@ export default class %s extends LightningElement {
     <masterLabel>%s</masterLabel>
     <targets>
         <target>lightning__AppPage</target>
+        <target>lightning__RecordAction</target>
         <target>lightning__RecordPage</target>
         <target>lightning__Tab</target>
     </targets>
+    <targetConfigs>
+        <targetConfig targets="lightning__RecordAction">
+            <actionType>ScreenAction</actionType>
+        </targetConfig>
+    </targetConfigs>
 </LightningComponentBundle>`, appClass)
 	files[fmt.Sprintf("lwc/%s/%s.js-meta.xml", appComp, appComp)] = []byte(meta)
 	// If requested, generate a CustomTab for the deployed app

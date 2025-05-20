@@ -4,6 +4,7 @@
 * [ ] Put
 * [ ] Post
 * [ ] Delete
+* [x] RecordId
 
 ## Thunder SLDS Components Roadmap
 We aim to provide a suite of SLDS-styled components under `github.com/octoberswimmer/thunder/components`.

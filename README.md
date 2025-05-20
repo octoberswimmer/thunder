@@ -26,6 +26,7 @@ Repository Structure:
 Key parts:
 - **thunder LWC** (`c:thunder`):
   - Loads a Go WASM app as static resource, injects global `get`/`post`/`put`/`delete` functions, and runs the app.
+  - Exposes the `recordId` from Lightning record pages to Go WASM code via `globalThis.recordId`.
 - **Thunder SLDS Components** (`components/`):
   - Go library offering SLDS-styled Masc components like `Button` and `DataTable`.
 - **Apex GoBridge** (`salesforce/classes/GoBridge.cls`):
