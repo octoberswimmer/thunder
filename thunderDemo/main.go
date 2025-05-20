@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -343,14 +342,9 @@ func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 		if err != nil {
 			return QueryErrorMsg{Err: err.Error()}
 		}
-		var result map[string]any
-		if err := json.Unmarshal(data, &result); err != nil {
-			return QueryErrorMsg{Err: err.Error()}
-		}
-		recs := result["records"].([]any)
-		rows := make([]map[string]string, len(recs))
-		for i, r := range recs {
-			v := r.(map[string]any)
+		rows := make([]map[string]string, len(data))
+		for i, r := range data {
+			v := r.Fields
 			name := v["Name"].(string)
 			rows[i] = map[string]string{"Name": name}
 		}
