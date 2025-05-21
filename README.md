@@ -75,13 +75,13 @@ thunder deploy [dir] [--tab]      # deploy app to Salesforce org (defaults to cu
 - Opens your default browser to the served app URL.
 
 #### deploy
- - `--tab, -t`: Also deploy and open a CustomTab for the app
+- `--tab, -t`: Also include a CustomTab in the deployment and open it for the app
 
 `thunder deploy`:
 - Builds a production WebAssembly bundle.
-- Packages metadata (static resource, Apex classes, LWC wrappers, app LWC) in-memory.
-- Generates `package.xml` and deploys all metadata via your CLI session.
-- With `--tab`, creates a CustomTab and opens `/lightning/n/<app>` in your browser.
+- Packages metadata (static resource, Apex classes, LWC wrappers, app LWC, and optional CustomTab) in-memory.
+- Generates `package.xml` (includes CustomTab if requested) and deploys all metadata via your CLI session.
+- With `--tab`, adds a CustomTab to the package, deploys it, and opens `/lightning/n/<app>` in your browser.
 
 The CLI watches Go source files (`.go`, `go.mod`, `go.sum`) and automatically rebuilds the WASM bundle on changes. Refresh the browser to load the latest build.
 API REST requests (via `/services/`) are automatically proxied through your active Salesforce CLI session. Be sure to run `force login` beforehand.

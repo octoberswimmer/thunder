@@ -16,5 +16,5 @@ func Page(header masc.ComponentOrHTML, content ...masc.MarkupOrChild) masc.Compo
 	cwArgs = append(cwArgs, content...)
 	contentWrapper := elem.Div(cwArgs...)
 	// Return header and content wrapper as a list
-	return masc.List{header, contentWrapper}
+	return elem.Div(masc.List{header, contentWrapper})
 }

@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
+	"unicode"
 
 	salesforce "github.com/octoberswimmer/thunder/salesforce"
 	"golang.org/x/tools/go/packages"
@@ -360,6 +362,46 @@ func runServe(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// sanitizeStaticResourceName converts a name to a valid static resource API name (alphanumeric, begins with letter).
+func sanitizeStaticResourceName(name string) string {
+	re := regexp.MustCompile(`[^A-Za-z0-9]+`)
+	name = re.ReplaceAllString(name, "")
+	if len(name) == 0 {
+		name = "App"
+	}
+	if !unicode.IsLetter(rune(name[0])) {
+		name = "A" + name
+	}
+	return name
+}
+
+// sanitizeComponentName converts an arbitrary name to a valid LWC component name (snake_case, lowercase, begins with letter, no consecutive underscores).
+func sanitizeComponentName(name string) string {
+	re := regexp.MustCompile(`[^A-Za-z0-9]+`)
+	name = re.ReplaceAllString(name, "_")
+	// collapse multiple underscores
+	name = regexp.MustCompile(`_+`).ReplaceAllString(name, "_")
+	name = strings.Trim(name, "_")
+	if name == "" {
+		name = "app"
+	}
+	if !unicode.IsLetter(rune(name[0])) {
+		name = "a" + name
+	}
+	return name
+}
+
+// toPascalCase converts a snake_case name to PascalCase for component class names.
+func toPascalCase(name string) string {
+	parts := strings.Split(name, "_")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.Title(p)
+		}
+	}
+	return strings.Join(parts, "")
+}
+
 // runDeploy is a stub for the deploy subcommand.
 func runDeploy(cmd *cobra.Command, args []string) error {
 	// Determine app directory (optional positional argument)
@@ -384,7 +426,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Build production WASM bundle
 	fmt.Printf("Building production WASM bundle in %s...\n", deployDir)
 	absDir, _ := filepath.Abs(deployDir)
-	resourceName := filepath.Base(absDir)
+	rawName := filepath.Base(absDir)
+	staticResourceName := sanitizeStaticResourceName(rawName)
+	lwcName := sanitizeComponentName(rawName)
+	appClass := toPascalCase(lwcName)
 	buildDir, err := buildProdWASM(deployDir)
 	if err != nil {
 		return fmt.Errorf("Error building production WASM: %w", err)
@@ -398,13 +443,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// Add WASM bundle as a StaticResource with .resource extension
-	files["staticresources/"+resourceName+".resource"] = wasmData
+	files["staticresources/"+staticResourceName+".resource"] = wasmData
 	staticResourceMetadata := `<?xml version="1.0" encoding="UTF-8"?>
 <StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
 	<cacheControl>Private</cacheControl>
 	<contentType>application/wasm</contentType>
 </StaticResource>`
-	files["staticresources/"+resourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
+	files["staticresources/"+staticResourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
 	// Apex classes
 	apexTemplates := []struct{ src, dst string }{
 		{"classes/GoBridge.cls", "classes/GoBridge.cls"},
@@ -428,9 +473,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 	// Generate LWC for the deployed app
-	appComp := resourceName
-	appClass := strings.Title(appComp)
-	// JS
+	appComp := lwcName
+	// JS wrapper for the app, importing the static resource
 	js := fmt.Sprintf(`import Thunder from 'c/thunder';
 import APP_URL from '@salesforce/resourceUrl/%s';
 
@@ -438,7 +482,7 @@ export default class %s extends Thunder {
 	connectedCallback() {
 		this.app = APP_URL;
 	}
-}`, appComp, appClass)
+}`, staticResourceName, appClass)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
 	// JS meta
 	meta := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -470,7 +514,7 @@ export default class %s extends Thunder {
 		files[fmt.Sprintf("tabs/%s.tab-meta.xml", appComp)] = []byte(tabXml)
 	}
 	// Generate package.xml for the deployment
-	pkg := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+	packageTpl := `<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
   <types>
     <members>%s</members>
@@ -486,9 +530,23 @@ export default class %s extends Thunder {
     <members>thunder</members>
     <members>%s</members>
     <name>LightningComponentBundle</name>
-  </types>
+  </types>`
+	if deployTab {
+		packageTpl += `
+  <types>
+    <members>%s</members>
+    <name>CustomTab</name>
+  </types>`
+	}
+	packageTpl += `
   <version>58.0</version>
-</Package>`, resourceName, resourceName)
+</Package>`
+	var pkg string
+	if deployTab {
+		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp, appComp)
+	} else {
+		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp)
+	}
 	files["package.xml"] = []byte(pkg)
 	// Perform deployment
 	creds, err := forcecli.ActiveCredentials(false)
@@ -502,6 +560,16 @@ export default class %s extends Thunder {
 	if err != nil {
 		return fmt.Errorf("deployment failed: %w", err)
 	}
+	if !result.Success {
+		fmt.Fprintf(os.Stderr, "Deployment errors:\n")
+		for _, failure := range result.Details.ComponentFailures {
+			fmt.Fprintf(os.Stderr, "- %s:%d %s: %s\n", failure.FileName, failure.LineNumber, failure.ProblemType, failure.Problem)
+		}
+		for _, tf := range result.Details.RunTestResult.TestFailures {
+			fmt.Fprintf(os.Stderr, "- Test %s.%s: %s\n", tf.Name, tf.MethodName, tf.Message)
+		}
+		return fmt.Errorf("metadata deployment completed with errors")
+	}
 	// Cleanup temporary build directory
 	if rmErr := os.RemoveAll(buildDir); rmErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to remove temp dir %s: %v\n", buildDir, rmErr)
@@ -509,7 +577,7 @@ export default class %s extends Thunder {
 	fmt.Printf("Deployment complete: %+v\n", result)
 	// Open new tab in Salesforce if requested
 	if deployTab {
-		tabUrl := fmt.Sprintf("%s/lightning/n/%s", creds.InstanceUrl, resourceName)
+		tabUrl := fmt.Sprintf("%s/lightning/n/%s", creds.InstanceUrl, appComp)
 		if err := desktop.Open(tabUrl); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to open tab URL: %v\n", err)
 		}
