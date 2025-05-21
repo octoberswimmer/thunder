@@ -27,12 +27,12 @@ We aim to provide a suite of SLDS-styled components under `github.com/octoberswi
 - [x] Spinner / Loading Indicator
 - [x] Badge / Pill
 - [x] Icon
-- [ ] Grid
+- [x] Grid
 
 ## Thunder CLI Features
 
 ### Deploy
 
 - [ ] Add CustomTab to package.xml
-- [ ] Display deploy errors
+- [x] Display deploy errors
 - [ ] Sanitize App Names

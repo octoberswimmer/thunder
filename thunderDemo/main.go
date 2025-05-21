@@ -305,7 +305,13 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-bottom_small")),
 		rawCrumbs,
 	)
-	children := []masc.MarkupOrChild{crumbs, pageLayout}
+	children := []masc.MarkupOrChild{crumbs, pageLayout} // Grid demonstration: three equal-width columns
+	children = append(children, elem.Div(
+		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_large")), masc.Text("Grid Demonstration:"),
+	), components.Grid(
+		components.GridColumn("1-of-3", components.Card("Column 1", masc.Text("This is column 1"))), components.GridColumn("1-of-3", components.Card("Column 2", masc.Text("This is column 2"))),
+		components.GridColumn("1-of-3", components.Card("Column 3", masc.Text("This is column 3")))),
+	)
 	// Append modal overlay if toggled
 	if m.ShowModal {
 		children = append(children,

@@ -65,6 +65,23 @@ icon := components.Icon(
     components.IconSmall,   // icon size (small, medium, large)
 )
 ```
+
+### Grid
+Render an SLDS grid container. Arrange child columns using GridColumn components.
+
+```go
+grid := components.Grid(
+    components.GridColumn("1-of-2", masc.Text("Column 1")),
+    components.GridColumn("1-of-2", masc.Text("Column 2")),
+)
+```
+
+### GridColumn
+Render an SLDS grid column. size is the SLDS sizing string (e.g. "1-of-2" yields the class "slds-size_1-of-2").
+
+```go
+components.GridColumn("1-of-2", masc.Text("Column content"))
+```
 ## Integration with Masc
 In your Masc model, render components just like any other Masc component:
 
