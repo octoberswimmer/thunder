@@ -274,7 +274,7 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
-				components.DataTable([]string{"Name"}, filtered),
+				components.DataTable([]string{"Name", "First Contact"}, filtered),
 			),
 		)
 	}
@@ -343,16 +343,19 @@ func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 	m.Loading = true
 	return func() masc.Msg {
 		// Perform SOQL query via Query API
-		soql := fmt.Sprintf("SELECT Name FROM Account LIMIT %s", limit)
+		soql := fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account LIMIT %s", limit)
 		data, err := api.Query(soql)
 		if err != nil {
 			return QueryErrorMsg{Err: err.Error()}
 		}
 		rows := make([]map[string]string, len(data))
 		for i, r := range data {
-			v := r.Fields
-			name := v["Name"].(string)
-			rows[i] = map[string]string{"Name": name}
+			name, err := r.StringValue("Name")
+			if err != nil {
+				return QueryErrorMsg{Err: err.Error()}
+			}
+			contactName, _ := r.StringValue("let c = Contacts | first(); c?.Name")
+			rows[i] = map[string]string{"Name": name, "First Contact": contactName}
 		}
 		return AccountsFetchedMsg{Rows: rows}
 	}

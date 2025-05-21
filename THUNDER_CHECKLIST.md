@@ -6,7 +6,7 @@
 * [ ] Delete
 * [x] RecordId
 - [ ] Query
-	- [ ] Improve Record Access API
+	- [x] Improve Record Access API
 
 ## Thunder SLDS Components Roadmap
 We aim to provide a suite of SLDS-styled components under `github.com/octoberswimmer/thunder/components`.

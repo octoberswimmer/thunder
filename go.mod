@@ -8,6 +8,7 @@ require github.com/octoberswimmer/masc v0.3.1-0.20250514183051-3f7e82293a5c // S
 
 require (
 	github.com/ForceCLI/force v1.0.9
+	github.com/expr-lang/expr v1.17.2
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gost-dom/browser v0.5.8
 	github.com/spf13/cobra v1.7.0

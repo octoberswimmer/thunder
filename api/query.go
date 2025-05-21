@@ -9,8 +9,9 @@ import (
 // Query performs a SOQL query via the Force CLI query library,
 // unifies pagination, and returns JSON with a 'records' array.
 // It returns an error if the query fails.
-func Query(soql string) ([]forcequery.Record, error) {
-	records, err := forcequery.Eager(
+// Query executes the SOQL query and returns wrapped Records for field access.
+func Query(soql string) ([]Record, error) {
+	raw, err := forcequery.Eager(
 		forcequery.InstanceUrl(""),
 		forcequery.ApiVersion("v63.0"),
 		forcequery.QS(soql),
@@ -18,6 +19,10 @@ func Query(soql string) ([]forcequery.Record, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	records := make([]Record, len(raw))
+	for i, r := range raw {
+		records[i] = Record{r}
 	}
 	return records, nil
 }
