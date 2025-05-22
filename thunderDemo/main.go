@@ -151,11 +151,10 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 
 // Render renders the button or the data table based on state.
 func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
- 	children := []masc.MarkupOrChild{
+	children := []masc.MarkupOrChild{
 		m.renderBreadcrumb(),
 		m.renderPageLayout(send),
 	}
-	children = append(children, m.renderGridDemo()...)
 	if m.ShowModal {
 		children = append(children, m.renderModal(send))
 	}
@@ -313,6 +312,7 @@ func (m *AppModel) renderPageLayout(send func(masc.Msg)) masc.ComponentOrHTML {
 		[]components.TabOption{
 			{Label: "Actions", Value: "actions", Content: actions},
 			{Label: "Data", Value: "data", Content: data},
+			{Label: "Layout", Value: "layout", Content: m.renderLayoutContent(send)},
 		},
 		m.SelectedTab,
 		func(tab string) { send(TabChangeMsg{Tab: tab}) },
@@ -337,19 +337,17 @@ func (m *AppModel) renderBreadcrumb() masc.ComponentOrHTML {
 	)
 }
 
-// renderGridDemo builds the grid demonstration section.
-func (m *AppModel) renderGridDemo() []masc.MarkupOrChild {
-	return []masc.MarkupOrChild{
-		elem.Div(
-			masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_large")),
-			masc.Text("Grid Demonstration:"),
-		),
+// renderLayoutContent builds the Layout tab content with a grid demonstration.
+func (m *AppModel) renderLayoutContent(send func(masc.Msg)) masc.ComponentOrHTML {
+	return elem.Div(
+		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_large")),
+		masc.Text("Grid Demonstration:"),
 		components.Grid(
 			components.GridColumn("1-of-3", components.Card("Column 1", masc.Text("This is column 1"))),
 			components.GridColumn("1-of-3", components.Card("Column 2", masc.Text("This is column 2"))),
 			components.GridColumn("1-of-3", components.Card("Column 3", masc.Text("This is column 3"))),
 		),
-	}
+	)
 }
 
 // renderModal builds the demo modal overlay.

@@ -34,8 +34,8 @@ Key parts:
 - **thunder CLI** (`cmd/thunder`):
   -  Command-line tool to serve a Thunder app while in development and, and to
 	  build and deploy it to a Salesforce org.
-- **thunderDemo MASC app** (`thunderDemo/`):
-  - Implements a Masc Model with a button and data table, using Thunder SLDS components.
+**thunderDemo MASC app** (`thunderDemo/`):
+  - Demonstrates SLDS-styled Masc components in a Go WASM app, organized into Actions, Data, and Layout tabs for interaction, data display, and grid layout examples.
 
 Getting Started:
 1. Install dependencies:
