@@ -151,9 +151,23 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 
 // Render renders the button or the data table based on state.
 func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
-	// Build two tab panes: actions and data
-	// Actions pane: primary buttons
-	actions := []masc.MarkupOrChild{
+ 	children := []masc.MarkupOrChild{
+		m.renderBreadcrumb(),
+		m.renderPageLayout(send),
+	}
+	children = append(children, m.renderGridDemo()...)
+	if m.ShowModal {
+		children = append(children, m.renderModal(send))
+	}
+	if m.ShowToast {
+		children = append(children, m.renderToast(send))
+	}
+	return elem.Div(children...)
+}
+
+// renderActionsContent builds the Actions tab content.
+func (m *AppModel) renderActionsContent(send func(masc.Msg)) masc.ComponentOrHTML {
+	return elem.Div(
 		components.Button("Fetch Accounts", components.VariantBrand, func(e *masc.Event) {
 			send(FetchAccountsMsg{})
 		}),
@@ -166,19 +180,19 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		components.Datepicker("Modified Since", m.LastModifiedDate, func(e *masc.Event) {
 			send(LastModifiedDateChangeMsg{Value: e.Target.Get("value").String()})
 		}),
-		// Demo Badge and Pill components
 		components.Badge("Demo Badge"),
 		components.Pill("Tag1", func(e *masc.Event) {
 			send(ShowToastMsg{})
 		}),
 		components.Pill("Tag2", nil),
-		// Demo Icon component
 		components.Icon(components.UtilityIcon, "settings", components.IconSmall),
-	}
-	// Data pane: spinner, filters, and table
+	)
+}
+
+// renderDataContent builds the Data tab content.
+func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 	var data []masc.MarkupOrChild
 	if m.Loading {
-		// Show spinner while loading
 		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium", "slds-align_absolute-center")),
@@ -186,7 +200,6 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 			),
 		)
 	} else if len(m.Rows) > 0 {
-		// Limit select
 		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
@@ -205,7 +218,6 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				),
 			),
 		)
-		// Checkbox filter
 		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
@@ -218,20 +230,21 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				),
 			),
 		)
-		// Radio filter mode
 		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
 				components.RadioGroup(
 					"filtermode",
 					"Filter Mode",
-					[]components.RadioOption{{Label: "Contains", Value: "contains"}, {Label: "Starts With", Value: "startswith"}},
+					[]components.RadioOption{
+						{Label: "Contains", Value: "contains"},
+						{Label: "Starts With", Value: "startswith"},
+					},
 					m.FilterMode,
 					func(mode string) { send(FilterModeMsg{Mode: mode}) },
 				),
 			),
 		)
-		// Text input filter
 		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
@@ -240,8 +253,6 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				}),
 			),
 		)
-		// Lookup filter for names
-		// Build suggestions list from all account names
 		var suggestions []components.LookupOption
 		for _, r := range m.Rows {
 			name := r["Name"]
@@ -259,21 +270,21 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				),
 			),
 		)
-		// Apply filters
 		var filtered []map[string]string
 		query := strings.ToLower(m.InputValue)
 		for _, r := range m.Rows {
 			name := r["Name"]
 			lower := strings.ToLower(name)
 			var match bool
-			if query == "" || (m.FilterMode == "contains" && strings.Contains(lower, query)) || (m.FilterMode == "startswith" && strings.HasPrefix(lower, query)) {
+			if query == "" ||
+				(m.FilterMode == "contains" && strings.Contains(lower, query)) ||
+				(m.FilterMode == "startswith" && strings.HasPrefix(lower, query)) {
 				match = true
 			}
 			if match && (!m.FilterAOnly || strings.Contains(lower, "a")) {
 				filtered = append(filtered, r)
 			}
 		}
-		// Show filtering progress
 		if len(m.Rows) > 0 {
 			percent := len(filtered) * 100 / len(m.Rows)
 			data = append(data,
@@ -283,7 +294,6 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 				),
 			)
 		}
-		// Data table
 		data = append(data,
 			elem.Div(
 				masc.Markup(masc.Class("slds-m-top_medium")),
@@ -291,63 +301,76 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 			),
 		)
 	}
-	// Compose tabs inside the Accounts card
+	return elem.Div(data...)
+}
+
+// renderPageLayout builds the main page header, tabs, and card.
+func (m *AppModel) renderPageLayout(send func(masc.Msg)) masc.ComponentOrHTML {
+	actions := m.renderActionsContent(send)
+	data := m.renderDataContent(send)
 	tabs := components.Tabs(
 		"accounts-tabs",
 		[]components.TabOption{
-			{Label: "Actions", Value: "actions", Content: elem.Div(actions...)},
-			{Label: "Data", Value: "data", Content: elem.Div(data...)},
+			{Label: "Actions", Value: "actions", Content: actions},
+			{Label: "Data", Value: "data", Content: data},
 		},
 		m.SelectedTab,
 		func(tab string) { send(TabChangeMsg{Tab: tab}) },
 	)
-	// Build page layout with header and card
 	header := components.PageHeader(
 		"Thunder Demo",
 		fmt.Sprintf("Mode: %s; Only A: %t", m.FilterMode, m.FilterAOnly),
 	)
 	card := components.Card("Accounts", tabs)
-	// Page wraps header and card
-	pageLayout := components.Page(header, card)
-	// Include breadcrumb at top with padding and margin
-	rawCrumbs := components.Breadcrumb([]components.BreadcrumbOption{
+	return components.Page(header, card)
+}
+
+// renderBreadcrumb builds the page breadcrumb.
+func (m *AppModel) renderBreadcrumb() masc.ComponentOrHTML {
+	raw := components.Breadcrumb([]components.BreadcrumbOption{
 		{Label: "Home", Href: "#"},
 		{Label: "Thunder Demo", Href: "#"},
 	})
-	crumbs := elem.Div(
+	return elem.Div(
 		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-bottom_small")),
-		rawCrumbs,
+		raw,
 	)
-	children := []masc.MarkupOrChild{crumbs, pageLayout} // Grid demonstration: three equal-width columns
-	children = append(children, elem.Div(
-		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_large")), masc.Text("Grid Demonstration:"),
-	), components.Grid(
-		components.GridColumn("1-of-3", components.Card("Column 1", masc.Text("This is column 1"))), components.GridColumn("1-of-3", components.Card("Column 2", masc.Text("This is column 2"))),
-		components.GridColumn("1-of-3", components.Card("Column 3", masc.Text("This is column 3")))),
+}
+
+// renderGridDemo builds the grid demonstration section.
+func (m *AppModel) renderGridDemo() []masc.MarkupOrChild {
+	return []masc.MarkupOrChild{
+		elem.Div(
+			masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_large")),
+			masc.Text("Grid Demonstration:"),
+		),
+		components.Grid(
+			components.GridColumn("1-of-3", components.Card("Column 1", masc.Text("This is column 1"))),
+			components.GridColumn("1-of-3", components.Card("Column 2", masc.Text("This is column 2"))),
+			components.GridColumn("1-of-3", components.Card("Column 3", masc.Text("This is column 3"))),
+		),
+	}
+}
+
+// renderModal builds the demo modal overlay.
+func (m *AppModel) renderModal(send func(masc.Msg)) masc.ComponentOrHTML {
+	return components.Modal(
+		"Demo Modal",
+		masc.Text("This is a demo modal"),
+		components.Button("Close", components.VariantNeutral, func(e *masc.Event) {
+			send(ToggleModalMsg{})
+		}),
 	)
-	// Append modal overlay if toggled
-	if m.ShowModal {
-		children = append(children,
-			components.Modal("Demo Modal",
-				masc.Text("This is a demo modal"),
-				components.Button("Close", components.VariantNeutral, func(e *masc.Event) {
-					send(ToggleModalMsg{})
-				}),
-			),
-		)
-	}
-	// Append toast notification if toggled
-	if m.ShowToast {
-		children = append(children,
-			components.Toast(
-				m.ToastVariant,
-				m.ToastHeader,
-				m.ToastMessage,
-				func(e *masc.Event) { send(HideToastMsg{}) },
-			),
-		)
-	}
-	return elem.Div(children...)
+}
+
+// renderToast builds the toast notification.
+func (m *AppModel) renderToast(send func(masc.Msg)) masc.ComponentOrHTML {
+	return components.Toast(
+		m.ToastVariant,
+		m.ToastHeader,
+		m.ToastMessage,
+		func(e *masc.Event) { send(HideToastMsg{}) },
+	)
 }
 
 // fetchAccountsCmd creates a Cmd that fetches accounts via JS and returns a Msg.
