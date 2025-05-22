@@ -1,6 +1,8 @@
 import { LightningElement, wire, api } from 'lwc';
 import { setTabLabel, setTabIcon, IsConsoleNavigation, getFocusedTabInfo } from 'lightning/platformWorkspaceApi';
 
+import { getPicklistValuesByRecordType } from './ui.js';
+
 import Go from 'c/go';
 
 // Apex proxy for REST calls
@@ -47,6 +49,8 @@ export default class Thunder extends LightningElement {
 		globalThis.post = (url, body) => callRest({ method: 'POST', url, body });
 		globalThis.patch = (url, body) => callRest({ method: 'PATCH', url, body });
 		globalThis.delete = (url) => callRest({ method: 'DELETE', url, body: null });
+
+		globalThis.getPicklistValuesByRecordType = getPicklistValuesByRecordType;
 
 		const resp = await fetch(this.app);
 		if (!resp.ok) {

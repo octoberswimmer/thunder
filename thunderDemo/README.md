@@ -4,7 +4,7 @@ This directory contains a minimal Go application skeleton that demonstrates call
 
 ## UI Demonstration
 
-The demo is organized into three tabs: **Actions**, **Data**, and **Layout** (grid demonstration).
+The demo is organized into four tabs: **Actions**, **Data**, **Object Info**, and **Layout** (grid demonstration).
 
 This demo includes the following SLDS components:
 - Badge: displays a simple label
@@ -12,9 +12,9 @@ This demo includes the following SLDS components:
 - Icon: renders an SLDS icon (utility/action/standard)
 - Datepicker: select a date to filter Accounts by LastModifiedDate
 - Breadcrumbs: displays navigation path (Home > Demo)
-- Tabs: group related content sections (Actions, Data, Layout)
+- Tabs: group related content sections (Actions, Data, Object Info, Layout)
 - Card: wrap content within SLDS cards
-- Button: trigger actions like fetching data, showing modal and toast
+- Button: trigger actions like fetching data, fetching object info, showing modal and toast
 - Modal: display overlay content
 - Toast: show notifications
 - Spinner: indicate loading state
@@ -23,7 +23,26 @@ This demo includes the following SLDS components:
 - DataTable: display tabular data for Accounts
 - Grid: demonstrate SLDS grid layout with cards
 
-Steps to build and deploy:
+### Object Info Tab
+
+The **Object Info** tab demonstrates the `GetObjectInfo` API functionality:
+- Click "Get Account Info" to fetch Account object metadata
+- Displays a spinner while loading
+- Shows comprehensive object information including:
+  - Basic info (API name, label, key prefix, custom status)
+  - Object capabilities (createable, updateable, deletable, queryable, searchable)
+  - Additional metadata (feed enabled, MRU enabled, theme info, field/relationship counts)
+
+## Deploy
+
+Deploy the app to your Salesforce org using the `thunder` CLI:
+
+```
+$ thunder deploy ./thunderDemo/
+```
+
+Manual steps to build and deploy:
+
 1. Initialize the Go module:
    ```sh
    cd thunderDemo

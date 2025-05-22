@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
-	<apiVersion>63.0</apiVersion>
+	<!-- API version must be 51.0 or lower to allow wire adapter functions to be used imperatively -->
+	<apiVersion>51.0</apiVersion>
 	<description>Thunder WASM LWC wrapper</description>
 	<isExposed>true</isExposed>
 	<masterLabel>thunder</masterLabel>

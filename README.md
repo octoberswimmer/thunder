@@ -19,7 +19,7 @@ Repository Structure:
 │  ├ staticresources/    StaticResource metadata
 │  └ lwc/                LWC wrappers (`go`, `thunder`)
 ├ components/            MASC components for Thunder apps
-├ api/                   REST proxy for WASM apps and Record API for convenient field access (StringValue, Value)
+├ api/                   REST proxy for WASM apps, UI API metadata (GetObjectInfo, GetPicklistValuesByRecordType), and Record API for convenient field access (StringValue, Value)
 └ thunderDemo/           sample Go MASC application
 ```
 

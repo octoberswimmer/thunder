@@ -40,6 +40,12 @@ type LastModifiedDateChangeMsg struct{ Value string }
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
 
+// FetchObjectInfoMsg represents the user clicking the fetch object info button.
+type FetchObjectInfoMsg struct{}
+
+// ObjectInfoFetchedMsg carries object info retrieved from the UI API.
+type ObjectInfoFetchedMsg struct{ Info api.ObjectInfo }
+
 // TabChangeMsg represents selecting a different tab in the UI.
 type TabChangeMsg struct{ Tab string }
 
@@ -62,7 +68,8 @@ type AppModel struct {
 	// LastModifiedDate is the date filter for querying Accounts.
 	LastModifiedDate string
 	// Data
-	Rows []map[string]string
+	Rows       []map[string]string
+	ObjectInfo *api.ObjectInfo
 	// Overlays and toast state
 	ShowModal    bool
 	ShowToast    bool
@@ -141,6 +148,13 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		// Hide toast notification
 		m.ShowToast = false
 		return m, nil
+	case FetchObjectInfoMsg:
+		m.SelectedTab = "objectinfo"
+		return m, m.fetchObjectInfoCmd()
+	case ObjectInfoFetchedMsg:
+		m.ObjectInfo = &msg.Info
+		m.Loading = false
+		return m, nil
 	case TabChangeMsg:
 		m.SelectedTab = msg.Tab
 		return m, nil
@@ -169,6 +183,9 @@ func (m *AppModel) renderActionsContent(send func(masc.Msg)) masc.ComponentOrHTM
 	return elem.Div(
 		components.Button("Fetch Accounts", components.VariantBrand, func(e *masc.Event) {
 			send(FetchAccountsMsg{})
+		}),
+		components.Button("Get Account Info", components.VariantBrand, func(e *masc.Event) {
+			send(FetchObjectInfoMsg{})
 		}),
 		components.Button("Show Modal", components.VariantNeutral, func(e *masc.Event) {
 			send(ToggleModalMsg{})
@@ -312,6 +329,7 @@ func (m *AppModel) renderPageLayout(send func(masc.Msg)) masc.ComponentOrHTML {
 		[]components.TabOption{
 			{Label: "Actions", Value: "actions", Content: actions},
 			{Label: "Data", Value: "data", Content: data},
+			{Label: "Object Info", Value: "objectinfo", Content: m.renderObjectInfoContent(send)},
 			{Label: "Layout", Value: "layout", Content: m.renderLayoutContent(send)},
 		},
 		m.SelectedTab,
@@ -334,6 +352,59 @@ func (m *AppModel) renderBreadcrumb() masc.ComponentOrHTML {
 	return elem.Div(
 		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-bottom_small")),
 		raw,
+	)
+}
+
+// renderObjectInfoContent builds the Object Info tab content.
+func (m *AppModel) renderObjectInfoContent(send func(masc.Msg)) masc.ComponentOrHTML {
+	if m.Loading && m.ObjectInfo == nil {
+		return elem.Div(
+			masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium", "slds-align_absolute-center")),
+			components.Spinner("medium"),
+		)
+	}
+
+	if m.ObjectInfo == nil {
+		return elem.Div(
+			masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium")),
+			masc.Text("Click 'Get Account Info' to fetch Account object metadata."),
+		)
+	}
+
+	info := m.ObjectInfo
+	return elem.Div(
+		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium")),
+		elem.Heading3(
+			masc.Markup(masc.Class("slds-text-heading_medium", "slds-m-bottom_medium")),
+			masc.Text("Account Object Information"),
+		),
+		components.Grid(
+			components.GridColumn("1-of-2", components.Card("Basic Info", elem.Div(
+				elem.Paragraph(masc.Text(fmt.Sprintf("API Name: %s", info.APIName))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Label: %s", info.Label))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Label Plural: %s", info.LabelPlural))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Key Prefix: %s", info.KeyPrefix))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Custom: %t", info.Custom))),
+			))),
+			components.GridColumn("1-of-2", components.Card("Capabilities", elem.Div(
+				elem.Paragraph(masc.Text(fmt.Sprintf("Createable: %t", info.Createable))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Updateable: %t", info.Updateable))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Deletable: %t", info.Deletable))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Queryable: %t", info.Queryable))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Searchable: %t", info.Searchable))),
+			))),
+		),
+		elem.Div(
+			masc.Markup(masc.Class("slds-m-top_medium")),
+			components.Card("Additional Info", elem.Div(
+				elem.Paragraph(masc.Text(fmt.Sprintf("Feed Enabled: %t", info.FeedEnabled))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("MRU Enabled: %t", info.MRUEnabled))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Layoutable: %t", info.Layoutable))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Theme Color: %s", info.ThemeInfo.Color))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Number of Fields: %d", len(info.Fields)))),
+				elem.Paragraph(masc.Text(fmt.Sprintf("Number of Child Relationships: %d", len(info.ChildRelationships)))),
+			)),
+		),
 	)
 }
 
@@ -402,6 +473,18 @@ func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 			rows[i] = map[string]string{"Name": name, "First Contact": contactName}
 		}
 		return AccountsFetchedMsg{Rows: rows}
+	}
+}
+
+// fetchObjectInfoCmd creates a Cmd that fetches Account object info via the UI API.
+func (m *AppModel) fetchObjectInfoCmd() masc.Cmd {
+	m.Loading = true
+	return func() masc.Msg {
+		info, err := api.GetObjectInfo("Account")
+		if err != nil {
+			return QueryErrorMsg{Err: err.Error()}
+		}
+		return ObjectInfoFetchedMsg{Info: info}
 	}
 }
 
