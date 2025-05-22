@@ -1,11 +1,17 @@
 ## Thunder API
 
-* [ ] Get
-* [ ] Put
+* [X] Get
+	- [X] Query
+* [X] Patch
+	- [X] SObject
 * [ ] Post
-* [ ] Delete
+	- [X] SObject
+	- [ ] Composite
+* [X] Delete
+	- [X] SObject
 * [x] RecordId
-- [ ] Query
+
+- [X] Query
 	- [x] Improve Record Access API
 
 ## Thunder SLDS Components Roadmap
