@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,9 +29,7 @@ var (
 	serveDir        string
 	currentBuildDir string
 	buildMutex      sync.RWMutex
-	// instanceURL and accessToken for Salesforce REST proxy
-	instanceURL string
-	accessToken string
+	session         *forcecli.Force
 	// deploy command flags
 	deployDir string
 	deployTab bool
@@ -238,41 +237,65 @@ func serve(port int, dir string) error {
 
 // fetchAuthInfo retrieves the Salesforce instance URL and access token
 // from the active Force CLI session.
-func fetchAuthInfo() (string, string, error) {
+func fetchAuthInfo() (*forcecli.Force, error) {
 	creds, err := forcecli.ActiveCredentials(false)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
-	return creds.InstanceUrl, creds.AccessToken, nil
+	f := forcecli.NewForce(&creds)
+	return f, nil
 }
 
 // proxyHandler forwards requests under /services/ to the Salesforce instance
 // using the stored session credentials.
+// proxyHandler forwards requests under /services/ to the Salesforce instance,
+// renewing the session automatically if the access token expires.
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
-	// Construct target URL
-	target := instanceURL + r.RequestURI
-	// Create new request
-	req, err := http.NewRequest(r.Method, target, r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Copy headers
-	for k, vv := range r.Header {
-		for _, v := range vv {
-			req.Header.Add(k, v)
+	r.Body.Close()
+
+	var resp *http.Response
+	for attempt := 0; attempt < 2; attempt++ {
+		target := session.Credentials.InstanceUrl + r.RequestURI
+		req, err := http.NewRequest(r.Method, target, bytes.NewReader(body))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+		for k, vv := range r.Header {
+			for _, v := range vv {
+				req.Header.Add(k, v)
+			}
+		}
+		req.Header.Set("Authorization", "Bearer "+session.Credentials.AccessToken)
+
+		resp, err = http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
+			resp.Body.Close()
+			fmt.Fprintf(os.Stderr, "Salesforce session expired, refreshing credentials and retrying\n")
+			err := session.RefreshSession()
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error renewing session: %v", err), http.StatusBadGateway)
+				return
+			}
+			continue
+		}
+		break
 	}
-	// Set authorization header
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	// Forward request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
+	if resp == nil {
+		http.Error(w, "no response from Salesforce", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
-	// Copy response headers
+
 	for k, vv := range resp.Header {
 		for _, v := range vv {
 			w.Header().Add(k, v)
@@ -326,7 +349,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("serve directory %s is not package main", serveDir)
 	}
 	// Fetch Salesforce auth info
-	instanceURL, accessToken, err = fetchAuthInfo()
+	session, err = fetchAuthInfo()
 	if err != nil {
 		return fmt.Errorf("Error fetching Salesforce auth info: %w", err)
 	}

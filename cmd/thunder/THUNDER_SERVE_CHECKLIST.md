@@ -14,6 +14,7 @@ This checklist tracks the implementation of the `thunder` CLI with `serve` and `
   - [x] Start HTTP server:
     - Serve `bundle.wasm`, `wasm_exec.js`, `index.html`, and static assets
     - Proxy `/services/...` REST calls to Salesforce org
+    - Automatically renew expired session and retry proxied requests
     - Watch source files and auto-rebuild on changes
 
 ## Deploy Subcommand
