@@ -64,14 +64,61 @@ private class GoBridgeTest {
 
 	@isTest
 	static void unsupported_url_should_throw_exception() {
-		String url = '/services/data/v58.0/sobjects/Account';
-		String body = '{"Name":"FooTest"}';
+		String url = '/services/data/v58.0/invalid/url';
 		Boolean exceptionThrown = false;
 		try {
-			String resp = GoBridge.callRest('POST', url, body);
+			String resp = GoBridge.callRest('GET', url, null);
 		} catch (GoBridge.UnsupportedUrlException e) {
 			exceptionThrown = true;
 		}
 		System.assertEquals(true, exceptionThrown, 'exception thrown');
+	}
+
+	@isTest
+	static void should_create_sobjects_via_callRest() {
+		String url = '/services/data/v58.0/sobjects/Account';
+		String body = '{"Name":"CreatedAccount","Type":"VA"}';
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+		System.assertEquals(true, (Boolean)result.get('success'), 'success should be true');
+		String newId = (String)result.get('id');
+		System.assertNotEquals(null, newId, 'id should be set');
+		Account acct = [
+			SELECT
+				Id,
+				Name,
+				Type
+			FROM
+				Account
+			WHERE
+				Id = :newId
+		];
+		System.assertEquals('CreatedAccount', acct.Name);
+		System.assertEquals('VA', acct.Type);
+	}
+
+	@isTest
+	static void should_update_sobjects_via_callRest() {
+		Account acct = new Account(Name = 'InitialName', Type = 'VA');
+		insert acct;
+		String url = '/services/data/v58.0/sobjects/Account/' + acct.Id;
+		String body = '{"Name":"UpdatedName"}';
+		String jsonResp = GoBridge.callRest('PATCH', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+		System.assertEquals(true, (Boolean)result.get('success'), 'success should be true');
+		Account updated = [SELECT Name FROM Account WHERE Id = :acct.Id];
+		System.assertEquals('UpdatedName', updated.Name);
+	}
+
+	@isTest
+	static void should_delete_sobjects_via_callRest() {
+		Account acct = new Account(Name = 'ToDelete', Type = 'VA');
+		insert acct;
+		String url = '/services/data/v58.0/sobjects/Account/' + acct.Id;
+		String jsonResp = GoBridge.callRest('DELETE', url, null);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+		System.assertEquals(true, (Boolean)result.get('success'), 'success should be true');
+		Integer count = [SELECT COUNT() FROM Account WHERE Id = :acct.Id];
+		System.assertEquals(0, count, 'record should be deleted');
 	}
 }

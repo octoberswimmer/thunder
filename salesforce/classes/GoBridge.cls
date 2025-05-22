@@ -108,6 +108,68 @@ public with sharing class GoBridge {
 			return JSON.serialize(result);
 		}
 
+		// Handle sObject create, update (PATCH), and delete via REST-style sobjects URLs
+		String pathOnly = getPathOnly(url);
+		Integer soIdx = pathOnly.indexOf('/sobjects/');
+		if (url.startsWith('/services/data/') && soIdx >= 0) {
+			String rest = pathOnly.substring(soIdx + '/sobjects/'.length());
+			List<String> parts = rest.split('/');
+			String objectName = parts.size() > 0 ? parts[0] : null;
+			Schema.SObjectType sobt = objectName != null ?
+				Schema.getGlobalDescribe().get(objectName) :
+				null;
+			if (sobt == null) {
+				throw new UnsupportedUrlException();
+			}
+			// Create new sObject
+			if (method.equalsIgnoreCase('POST') &&
+				parts.size() == 1) {
+				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
+				SObject sobj = sobt.newSObject();
+				for (String key : data.keySet()) {
+					sobj.put(key, data.get(key));
+				}
+
+				insert sobj;
+				Map<String, Object> result = new Map<String, Object>{
+					'id' => (String)sobj.get('Id'),
+					'success' => true,
+					'errors' => new List<String>()
+				};
+				return JSON.serialize(result);
+			}
+			// Update existing sObject via PATCH
+			if (method.equalsIgnoreCase('PATCH') &&
+				parts.size() == 2) {
+				String recId = parts[1];
+				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
+				SObject sobj = sobt.newSObject();
+				sobj.put('Id', recId);
+				for (String key : data.keySet()) {
+					sobj.put(key, data.get(key));
+				}
+
+				update sobj;
+				Map<String, Object> result = new Map<String, Object>{
+					'success' => true,
+					'errors' => new List<String>()
+				};
+				return JSON.serialize(result);
+			}
+			// Delete existing sObject
+			if (method.equalsIgnoreCase('DELETE') &&
+				parts.size() == 2) {
+				String recId = parts[1];
+				SObject sobj = sobt.newSObject();
+				sobj.put('Id', recId);
+				delete sobj;
+				Map<String, Object> result = new Map<String, Object>{
+					'success' => true,
+					'errors' => new List<String>()
+				};
+				return JSON.serialize(result);
+			}
+		}
 		throw new UnsupportedUrlException();
 	}
 
