@@ -34,6 +34,9 @@ type CheckboxMsg struct{ Checked bool }
 // FilterModeMsg represents changing the filter mode (contains vs startsWith).
 type FilterModeMsg struct{ Mode string }
 
+// LastModifiedDateChangeMsg represents selecting a date to filter Accounts by LastModifiedDate.
+type LastModifiedDateChangeMsg struct{ Value string }
+
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
 
@@ -56,6 +59,8 @@ type AppModel struct {
 	FilterAOnly bool
 	FilterMode  string
 	SelectedTab string
+	// LastModifiedDate is the date filter for querying Accounts.
+	LastModifiedDate string
 	// Data
 	Rows []map[string]string
 	// Overlays and toast state
@@ -76,6 +81,7 @@ func (m *AppModel) Init() masc.Cmd {
 	m.FilterMode = "contains"
 	m.SelectedTab = "actions"
 	m.Loading = false
+	m.LastModifiedDate = ""
 	return nil
 }
 
@@ -98,6 +104,10 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 	case FilterModeMsg:
 		// Update filter mode
 		m.FilterMode = msg.Mode
+		return m, nil
+	case LastModifiedDateChangeMsg:
+		// Update LastModifiedDate filter
+		m.LastModifiedDate = msg.Value
 		return m, nil
 	case FetchAccountsMsg:
 		// Trigger asynchronous fetch command with selected limit
@@ -152,6 +162,9 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 		}),
 		components.Button("Show Toast", components.VariantNeutral, func(e *masc.Event) {
 			send(ShowToastMsg{})
+		}),
+		components.Datepicker("Modified Since", m.LastModifiedDate, func(e *masc.Event) {
+			send(LastModifiedDateChangeMsg{Value: e.Target.Get("value").String()})
 		}),
 		// Demo Badge and Pill components
 		components.Badge("Demo Badge"),
@@ -342,8 +355,18 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 	m.Loading = true
 	return func() masc.Msg {
-		// Perform SOQL query via Query API
-		soql := fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account LIMIT %s", limit)
+		// Build SOQL query with optional LastModifiedDate filter
+		var soql string
+		if m.LastModifiedDate != "" {
+			t, err := time.Parse("2006-01-02", m.LastModifiedDate)
+			if err != nil {
+				return QueryErrorMsg{Err: err.Error()}
+			}
+			dt := t.UTC().Format("2006-01-02T15:04:05Z")
+			soql = fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account WHERE LastModifiedDate >= %s LIMIT %s", dt, limit)
+		} else {
+			soql = fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account LIMIT %s", limit)
+		}
 		data, err := api.Query(soql)
 		if err != nil {
 			return QueryErrorMsg{Err: err.Error()}

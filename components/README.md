@@ -82,6 +82,17 @@ Render an SLDS grid column. size is the SLDS sizing string (e.g. "1-of-2" yields
 ```go
 components.GridColumn("1-of-2", masc.Text("Column content"))
 ```
+
+### Datepicker
+Render an SLDS styled date picker with a label.
+
+```go
+datepicker := components.Datepicker(
+    "Date",        // label
+    value,         // selected date in YYYY-MM-DD format
+    func(e *masc.Event) { /* handler when date changes */ },
+)
+```
 ## Integration with Masc
 In your Masc model, render components just like any other Masc component:
 

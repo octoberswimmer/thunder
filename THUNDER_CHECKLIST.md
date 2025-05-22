@@ -28,6 +28,7 @@ We aim to provide a suite of SLDS-styled components under `github.com/octoberswi
 - [x] Badge / Pill
 - [x] Icon
 - [x] Grid
+- [ ] Datepicker
 
 ## Thunder CLI Features
 

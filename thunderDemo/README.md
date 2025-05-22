@@ -8,6 +8,7 @@ This demo includes the following SLDS components:
 - Badge: displays a simple label
 - Pill: displays a pill with an optional remove button (clicking remove shows a toast)
 - Icon: renders an SLDS icon (utility/action/standard)
+- Datepicker: select a date to filter Accounts by LastModifiedDate
 - Breadcrumbs: displays navigation path (Home > Demo)
 
 Steps to build and deploy:
