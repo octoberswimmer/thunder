@@ -41,7 +41,7 @@ func Card(title string, children ...masc.MarkupOrChild) masc.ComponentOrHTML {
 	// Assemble card container
 	return elem.Article(
 		masc.Markup(
-			masc.Class("slds-card"),
+			masc.Class("slds-card", "slds-m-bottom_medium"),
 		),
 		cardHeader,
 		cardBody,

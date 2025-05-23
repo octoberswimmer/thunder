@@ -46,7 +46,7 @@ func Select(label string, options []SelectOption, selected string, onChange func
 	}
 	markupOrChild = append(markupOrChild, selectOpts...)
 	wrapper := elem.Div(
-		masc.Markup(masc.Class("slds-form-element")),
+		masc.Markup(masc.Class("slds-form-element", "slds-m-bottom_small")),
 		// Label for the select
 		elem.Label(
 			masc.Markup(masc.Class("slds-form-element__label")),

@@ -6,14 +6,14 @@ import (
 	"github.com/octoberswimmer/masc/elem"
 )
 
-// Grid renders an SLDS grid container.
+// Grid renders an SLDS grid container with gutters for spacing.
 // Arrange child columns using GridColumn components.
 func Grid(children ...masc.MarkupOrChild) masc.ComponentOrHTML {
 	if len(children) == 0 {
 		return nil
 	}
 	args := []masc.MarkupOrChild{
-		masc.Markup(masc.Class("slds-grid", "slds-wrap")),
+		masc.Markup(masc.Class("slds-grid", "slds-wrap", "slds-gutters")),
 	}
 	args = append(args, children...)
 	return elem.Div(args...)

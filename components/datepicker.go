@@ -12,7 +12,7 @@ import (
 // onChange is the event handler when the date value changes.
 func Datepicker(label, value string, onChange func(*masc.Event)) masc.ComponentOrHTML {
 	return elem.Div(
-		masc.Markup(masc.Class("slds-form-element")),
+		masc.Markup(masc.Class("slds-form-element", "slds-m-bottom_small")),
 		elem.Label(
 			masc.Markup(masc.Class("slds-form-element__label")),
 			masc.Text(label),

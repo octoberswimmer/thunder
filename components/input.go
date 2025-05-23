@@ -14,7 +14,7 @@ import (
 func TextInput(label, value, placeholder string, onInput func(*masc.Event)) masc.ComponentOrHTML {
 	// Form element wrapper
 	return elem.Div(
-		masc.Markup(masc.Class("slds-form-element")),
+		masc.Markup(masc.Class("slds-form-element", "slds-m-bottom_small")),
 		// Label
 		elem.Label(
 			masc.Markup(masc.Class("slds-form-element__label")),

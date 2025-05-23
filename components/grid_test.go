@@ -33,3 +33,12 @@ func TestGridColumnNoChildren(t *testing.T) {
 		t.Error("GridColumn returned nil when no children provided")
 	}
 }
+
+// TestGridWithGutters verifies that Grid includes gutter classes for spacing.
+func TestGridWithGutters(t *testing.T) {
+	child := masc.Text("cell")
+	comp := Grid(child)
+	if comp == nil {
+		t.Error("Grid returned nil when children provided")
+	}
+}

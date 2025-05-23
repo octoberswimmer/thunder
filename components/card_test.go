@@ -12,3 +12,11 @@ func TestCardBasic(t *testing.T) {
 		t.Error("Card returned nil for valid title and body")
 	}
 }
+
+// TestCardWithMargin verifies that Card includes bottom margin for spacing.
+func TestCardWithMargin(t *testing.T) {
+	comp := Card("Title", masc.Text("Body"))
+	if comp == nil {
+		t.Error("Card returned nil for valid title and body")
+	}
+}

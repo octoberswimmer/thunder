@@ -31,7 +31,7 @@ func Stencil(label string, height ...string) masc.ComponentOrHTML {
 
 	// Return form element structure with label when label is provided
 	return elem.Div(
-		masc.Markup(masc.Class("slds-form-element")),
+		masc.Markup(masc.Class("slds-form-element", "slds-m-bottom_small")),
 		elem.Label(
 			masc.Markup(masc.Class("slds-form-element__label")),
 			masc.Text(label),
