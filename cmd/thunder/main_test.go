@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -79,5 +81,38 @@ func Test_wasmExecHandler_serves_wasm_exec_js(t *testing.T) {
 	}
 	if got := string(body); got != string(data) {
 		t.Errorf("Body = %q; want %q", got, string(data))
+	}
+}
+
+// Test_zipBundle_creates_zip_with_bundleWasm verifies that zipBundle correctly creates
+// a zip archive containing a single bundle.wasm file with the original data.
+func Test_zipBundle_creates_zip_with_bundleWasm(t *testing.T) {
+	data := []byte("wasm-content")
+	zipData, err := zipBundle(data)
+	if err != nil {
+		t.Fatalf("zipBundle returned error: %v", err)
+	}
+	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		t.Fatalf("failed to read zip: %v", err)
+	}
+	if len(r.File) != 1 {
+		t.Fatalf("expected 1 file in zip, got %d", len(r.File))
+	}
+	f := r.File[0]
+	if f.Name != "bundle.wasm" {
+		t.Errorf("expected file name bundle.wasm, got %s", f.Name)
+	}
+	rc, err := f.Open()
+	if err != nil {
+		t.Fatalf("failed to open zipped file: %v", err)
+	}
+	defer rc.Close()
+	content, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("failed to read zipped file content: %v", err)
+	}
+	if !bytes.Equal(content, data) {
+		t.Errorf("zipped content mismatch: expected %q, got %q", data, content)
 	}
 }

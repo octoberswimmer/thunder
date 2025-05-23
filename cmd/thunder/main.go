@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
@@ -460,17 +461,20 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Built production bundle at %s\n", buildDir)
 	// Prepare metadata files in memory
 	files := make(forcecli.ForceMetadataFiles)
-	// WASM static resource
+	// Compress WASM bundle into a zip static resource
 	wasmData, err := os.ReadFile(filepath.Join(buildDir, "bundle.wasm"))
 	if err != nil {
 		return err
 	}
-	// Add WASM bundle as a StaticResource with .resource extension
-	files["staticresources/"+staticResourceName+".resource"] = wasmData
+	zipData, err := zipBundle(wasmData)
+	if err != nil {
+		return err
+	}
+	files["staticresources/"+staticResourceName+".resource"] = zipData
 	staticResourceMetadata := `<?xml version="1.0" encoding="UTF-8"?>
 <StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
 	<cacheControl>Private</cacheControl>
-	<contentType>application/wasm</contentType>
+	<contentType>application/zip</contentType>
 </StaticResource>`
 	files["staticresources/"+staticResourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
 	// Apex classes
@@ -503,7 +507,7 @@ import APP_URL from '@salesforce/resourceUrl/%s';
 
 export default class %s extends Thunder {
 	connectedCallback() {
-		this.app = APP_URL;
+		this.app = APP_URL + '/bundle.wasm';
 	}
 }`, staticResourceName, appClass)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
@@ -629,4 +633,21 @@ func buildProdWASM(appDir string) (string, error) {
 		return "", err
 	}
 	return buildDir, nil
+}
+
+// zipBundle compresses the WebAssembly binary into a zip archive for StaticResource deployment.
+func zipBundle(wasmData []byte) ([]byte, error) {
+	buf := &bytes.Buffer{}
+	zw := zip.NewWriter(buf)
+	w, err := zw.Create("bundle.wasm")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := w.Write(wasmData); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

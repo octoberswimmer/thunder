@@ -16,7 +16,6 @@ Repository Structure:
 │  ├ main_test.go        CLI command tests
 ├ salesforce/            embedded metadata templates
 │  ├ classes/            Apex classes
-│  ├ staticresources/    StaticResource metadata
 │  └ lwc/                LWC wrappers (`go`, `thunder`)
 ├ components/            MASC components for Thunder apps
 ├ api/                   REST proxy for WASM apps, UI API metadata (GetObjectInfo, GetPicklistValuesByRecordType), and Record API for convenient field access (StringValue, Value)
@@ -25,7 +24,7 @@ Repository Structure:
 
 Key parts:
 - **thunder LWC** (`c:thunder`):
-  - Loads a Go WASM app as static resource, injects global `get`/`post`/`put`/`delete` functions, and runs the app.
+  - Loads a Go WASM app as static resource, injects global API functions, and runs the app.
   - Exposes the `recordId` from Lightning record pages to Go WASM code via `globalThis.recordId`.
 - **Thunder SLDS Components** (`components/`):
   - Go library offering SLDS-styled Masc components like `Button` and `DataTable`.
@@ -40,14 +39,14 @@ Key parts:
 Getting Started:
 1. Install dependencies:
    - Go 1.24+ (with WASM support)
-   - Force CLI
+	- [Force CLI](https://github.com/forcecli/force)
 2. Run the thunderDemo app locally:
    ```sh
    $ force login
-   $ thunder ./thunderDemo
+   $ thunder serve ./thunderDemo
    ```
    This compiles `thunderDemo/main.go` and starts a web server to serve the app.
-3. Deploy to Salesforce using `thunder deploy -d ./thunderDemo --tab`
+3. Deploy to Salesforce using `thunder deploy ./thunderDemo --tab`
 4. Click **Fetch Accounts** to see a data table rendered from your Thunder app.
 
 ## Thunder CLI
@@ -74,6 +73,9 @@ thunder deploy [dir] [--tab]      # deploy app to Salesforce org (defaults to cu
 - Proxies `/services/...` REST calls to your Salesforce org via CLI auth.
 - Opens your default browser to the served app URL.
 
+The CLI watches Go source files (`.go`, `go.mod`, `go.sum`) and automatically rebuilds the WASM bundle on changes. Refresh the browser to load the latest build.
+API REST requests (via `/services/`) are automatically proxied through your active Salesforce CLI session. Be sure to run `force login` beforehand.
+
 #### deploy
 - `--tab, -t`: Also include a CustomTab in the deployment and open it for the app
 
@@ -82,8 +84,3 @@ thunder deploy [dir] [--tab]      # deploy app to Salesforce org (defaults to cu
 - Packages metadata (static resource, Apex classes, LWC wrappers, app LWC, and optional CustomTab) in-memory.
 - Generates `package.xml` (includes CustomTab if requested) and deploys all metadata via your CLI session.
 - With `--tab`, adds a CustomTab to the package, deploys it, and opens `/lightning/n/<app>` in your browser.
-
-The CLI watches Go source files (`.go`, `go.mod`, `go.sum`) and automatically rebuilds the WASM bundle on changes. Refresh the browser to load the latest build.
-API REST requests (via `/services/`) are automatically proxied through your active Salesforce CLI session. Be sure to run `force login` beforehand.
-
-For details on implementing additional SLDS components, see `THUNDER_CHECKLIST.md`.

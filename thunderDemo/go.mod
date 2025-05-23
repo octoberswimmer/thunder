@@ -11,6 +11,7 @@ require (
 
 require (
 	github.com/ForceCLI/force v1.0.9 // indirect
+	github.com/expr-lang/expr v1.17.2 // indirect
 	github.com/gost-dom/browser v0.5.8 // indirect
 	github.com/gost-dom/css v0.1.0 // indirect
 	golang.org/x/net v0.34.0 // indirect

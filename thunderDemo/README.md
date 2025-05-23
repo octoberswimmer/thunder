@@ -1,6 +1,7 @@
 # Thunder Go WASM App
 
-This directory contains a minimal Go application skeleton that demonstrates calling the Salesforce REST proxy injected by the Thunder LWC.
+This directory contains a minimal Go application skeleton that demonstrates
+using Thunder components and calling the Salesforce API.
 
 ## UI Demonstration
 
@@ -46,32 +47,31 @@ Manual steps to build and deploy:
 1. Initialize the Go module:
    ```sh
    cd thunderDemo
-   go mod init thunderDemo
+   go get
    ```
-2. Add the `masc` and `thunder` libraries:
+2. Build the WASM binary:
    ```sh
-   go get github.com/octoberswimmer/masc
-   go get github.com/octoberswimmer/thunder
+   GOOS=js GOARCH=wasm go build -o bundle.wasm main.go
    ```
-3. Build the WASM binary:
+3. Create a zip archive for the static resource:
    ```sh
-   GOOS=js GOARCH=wasm go build -o ../main/default/staticresources/thunderDemo.wasm main.go
+   zip thunderDemo.zip bundle.wasm
    ```
-4. Create a static resource in `main/default/staticresources`:
-   - Place `thunderDemo.wasm` in `main/default/staticresources/`
-   - Add a `thunderDemo.resource-meta.xml` alongside
-5. In your LWC component, import the resource:
-
+   and upload to your org.
+4. Deploy the apex classes and LWC components in `../salesforce/`
+5. Create an LWC component, import the resource and reference the WASM file within the zip:
 ```js
-import { LightningElement } from 'lwc';
-// Load the compiled Go WASM Thunder app as a static resource
-import THUNDER_APP from '@salesforce/resourceUrl/thunderDemo';
+import Thunder from 'c/thunder';
+import APP_URL from '@salesforce/resourceUrl/thunderDemo';
 
-export default class ThunderDemo extends LightningElement {
-        // Pass the Thunder WASM app URL into the thunder component
-        thunderApp = THUNDER_APP;
+export default class ThunderDemo extends Thunder {
+	connectedCallback() {
+		this.app = APP_URL;
+	}
 }
 ```
-   and pass it to `<c-thunder app={THUNDER_APP}></c-thunder>`.
 
-Now you can click the button in the Thunder Demo to trigger your Go/WASM code, which calls the `get` method proxied by your Apex `GoBridge`.
+No template is needed.  The template from the Thunder module extended by your
+app is used.
+
+Create a tab for the LWC or add it to a lightning page.
