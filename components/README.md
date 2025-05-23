@@ -17,6 +17,7 @@
 - Spinner (loading indicator)
 - Lookup / Autocomplete (in-page suggestions)
 - ProgressBar (horizontal progress indicator)
+- Stencil (skeleton loading placeholder)
   
 ## Installation
 Add Thunder as a dependency in your Go WASM module:
@@ -92,6 +93,20 @@ datepicker := components.Datepicker(
     value,         // selected date in YYYY-MM-DD format
     func(e *masc.Event) { /* handler when date changes */ },
 )
+```
+
+### Stencil
+Render a skeleton loading placeholder while content is loading:
+
+```go
+// Simple stencil without label
+stencil := components.Stencil("")
+
+// Labeled stencil with default height
+stencil := components.Stencil("Loading...")
+
+// Labeled stencil with custom height
+stencil := components.Stencil("Loading...", "4rem")
 ```
 ## Integration with Masc
 In your Masc model, render components just like any other Masc component:
