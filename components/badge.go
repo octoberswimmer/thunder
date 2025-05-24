@@ -1,3 +1,19 @@
+// Package components provides SLDS-styled Go components for building Salesforce Lightning applications.
+//
+// These components wrap the Masc virtual DOM framework to provide type-safe, functional
+// UI components following Salesforce Lightning Design System patterns. All components
+// are designed for use in WebAssembly Lightning Web Components via the Thunder framework.
+//
+// The package includes:
+//   - Form components (TextInput, Textarea, Select, Checkbox, etc.)
+//   - Layout components (Grid, Card, Page, Modal, Container, Spacer)
+//   - Data components (DataTable, Lookup)
+//   - UI components (Button, Badge, Icon, Toast, Spinner, etc.)
+//   - Text components (Text, Paragraph, Heading)
+//   - Validation support for real-time form validation
+//
+// All components abstract away direct SLDS CSS classes and provide semantic,
+// type-safe APIs for consistent styling and behavior.
 package components
 
 import (

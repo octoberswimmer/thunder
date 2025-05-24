@@ -2,7 +2,7 @@ module thunderDemo
 
 go 1.24.2
 
-replace github.com/octoberswimmer/thunder => ../
+replace github.com/octoberswimmer/thunder => ../../
 
 require (
 	github.com/octoberswimmer/masc v0.3.1-0.20250514183051-3f7e82293a5c

@@ -9,10 +9,6 @@ import (
 // The modal and backdrop are always visible. To toggle visibility, wrap the
 // component in masc.If or similar conditional logic.
 // title is displayed in the header; content is rendered in the modal body.
-// Modal renders an SLDS modal dialog with the given title and body content.
-// The modal and backdrop are always visible. To toggle visibility, wrap the
-// component in masc.If or similar conditional logic.
-// title is displayed in the header; content is rendered in the modal body.
 func Modal(title string, children ...masc.MarkupOrChild) masc.ComponentOrHTML {
 	// Split children into body (first) and footer (rest)
 	var bodyChildren, footerChildren []masc.MarkupOrChild

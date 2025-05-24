@@ -1,4 +1,3 @@
-// Package components provides SLDS-styled Masc components under the thunder namespace.
 package components
 
 import (

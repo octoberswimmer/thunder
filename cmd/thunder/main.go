@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -101,7 +102,15 @@ func buildWASM(appDir string) (string, error) {
 	// build WASM binary
 	outWasm := filepath.Join(buildDir, "bundle.wasm")
 	cmd := exec.Command("go", "build", "-o", outWasm, "-tags", "dev")
-	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+
+	// Set up environment with smart GOWORK handling
+	env := append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+	if shouldDisableWorkspace(appDir) {
+		env = append(env, "GOWORK=off")
+		fmt.Printf("Note: Disabling go.work for standalone module build\n")
+	}
+	cmd.Env = env
+
 	absPath, err := filepath.Abs(appDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to set app dir: %w", err)
@@ -119,6 +128,110 @@ func buildWASM(appDir string) (string, error) {
 		return "", err
 	}
 	return buildDir, nil
+}
+
+// findGoWork searches for go.work file starting from dir and walking up
+func findGoWork(dir string) string {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+
+	for {
+		workFile := filepath.Join(absDir, "go.work")
+		if _, err := os.Stat(workFile); err == nil {
+			return workFile
+		}
+
+		parent := filepath.Dir(absDir)
+		if parent == absDir {
+			break // reached root
+		}
+		absDir = parent
+	}
+	return ""
+}
+
+// parseWorkspaceModules parses go.work file and returns the list of module directories
+func parseWorkspaceModules(workFile string) ([]string, error) {
+	file, err := os.Open(workFile)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var modules []string
+	scanner := bufio.NewScanner(file)
+	inUseBlock := false
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		if strings.HasPrefix(line, "use (") {
+			inUseBlock = true
+			continue
+		}
+		if strings.HasPrefix(line, "use ") && !strings.Contains(line, "(") {
+			// Single line use directive
+			module := strings.TrimSpace(strings.TrimPrefix(line, "use"))
+			if !strings.HasPrefix(module, "//") && module != "" {
+				modules = append(modules, module)
+			}
+			continue
+		}
+		if inUseBlock {
+			if strings.HasPrefix(line, ")") {
+				inUseBlock = false
+				continue
+			}
+			if strings.HasPrefix(line, "//") || line == "" {
+				continue
+			}
+			modules = append(modules, line)
+		}
+	}
+
+	// Convert relative paths to absolute paths relative to workspace file
+	workDir := filepath.Dir(workFile)
+	for i, module := range modules {
+		if !filepath.IsAbs(module) {
+			modules[i] = filepath.Join(workDir, module)
+		}
+	}
+
+	return modules, scanner.Err()
+}
+
+// shouldDisableWorkspace determines if GOWORK should be disabled for the target directory
+func shouldDisableWorkspace(targetDir string) bool {
+	workFile := findGoWork(targetDir)
+	if workFile == "" {
+		return false // No workspace to disable
+	}
+
+	modules, err := parseWorkspaceModules(workFile)
+	if err != nil {
+		// If we can't parse the workspace, be conservative and don't disable it
+		return false
+	}
+
+	absTarget, err := filepath.Abs(targetDir)
+	if err != nil {
+		return false
+	}
+
+	// Check if target directory matches any workspace module
+	for _, module := range modules {
+		absModule, err := filepath.Abs(module)
+		if err != nil {
+			continue
+		}
+		if absTarget == absModule {
+			return false // Target is in workspace, keep GOWORK enabled
+		}
+	}
+
+	return true // Target not in workspace, disable GOWORK
 }
 
 // copyFile copies a file from src to dst, creating parent directories.
@@ -160,7 +273,14 @@ func watchAndRebuild(appDir string) {
 	gomodcache := strings.TrimSpace(string(gomodcacheBytes))
 
 	listCmd := exec.Command("go", "list", "-C", appDir, "-m", "-mod=readonly", "-f", "{{.Dir}}", "all")
-	listCmd.Env = os.Environ()
+
+	// Use same environment setup as build commands for consistency
+	env := os.Environ()
+	if shouldDisableWorkspace(appDir) {
+		env = append(env, "GOWORK=off")
+	}
+	listCmd.Env = env
+
 	out, err := listCmd.Output()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing modules: %v\n", err)
@@ -341,9 +461,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("Invalid app directory: %s", serveDir)
 	}
+
+	// Set up environment for package validation
+	env := os.Environ()
+	if shouldDisableWorkspace(serveDir) {
+		env = append(env, "GOWORK=off")
+	}
+
 	cfg := &packages.Config{
 		Mode: packages.NeedName,
 		Dir:  serveDir,
+		Env:  env,
 	}
 	pkgs, _ := packages.Load(cfg, ".")
 	if len(pkgs) == 0 || pkgs[0].Name != "main" {
@@ -439,9 +567,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("Invalid app directory: %s", deployDir)
 	}
+
+	// Set up environment for package validation
+	env := os.Environ()
+	if shouldDisableWorkspace(deployDir) {
+		env = append(env, "GOWORK=off")
+	}
+
 	cfg := &packages.Config{
 		Mode: packages.NeedName,
 		Dir:  deployDir,
+		Env:  env,
 	}
 	pkgs, _ := packages.Load(cfg, ".")
 	if len(pkgs) == 0 || pkgs[0].Name != "main" {
@@ -621,7 +757,15 @@ func buildProdWASM(appDir string) (string, error) {
 	}
 	outWasm := filepath.Join(buildDir, "bundle.wasm")
 	cmd := exec.Command("go", "build", "-o", outWasm)
-	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+
+	// Set up environment with smart GOWORK handling
+	env := append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+	if shouldDisableWorkspace(appDir) {
+		env = append(env, "GOWORK=off")
+		fmt.Printf("Note: Disabling go.work for standalone module deployment\n")
+	}
+	cmd.Env = env
+
 	abs, err := filepath.Abs(appDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to get absolute path: %w", err)

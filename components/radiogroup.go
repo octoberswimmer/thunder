@@ -17,12 +17,6 @@ type RadioOption struct {
 // legend is the group label text.
 // options is the slice of RadioOption values.
 // selected is the currently selected option value.
-// onChange is the change event handler when any radio is selected.
-// RadioGroup renders an SLDS styled group of radio buttons within a form element.
-// name is the shared name attribute for the radio inputs.
-// legend is the group label text.
-// options is the slice of RadioOption values.
-// selected is the currently selected option value.
 // onChange is called with the Value of the selected option when clicked.
 func RadioGroup(name, legend string, options []RadioOption, selected string, onChange func(string)) masc.ComponentOrHTML {
 	// Build argument list for the form-element container, attach change listener to fieldset

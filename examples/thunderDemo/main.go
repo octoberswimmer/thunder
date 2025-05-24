@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/octoberswimmer/masc"
-	"github.com/octoberswimmer/masc/elem"
 	"github.com/octoberswimmer/thunder"
 	"github.com/octoberswimmer/thunder/api"
 	"github.com/octoberswimmer/thunder/components"
@@ -175,12 +174,12 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 	if m.ShowToast {
 		children = append(children, m.renderToast(send))
 	}
-	return elem.Div(children...)
+	return components.Container(children...)
 }
 
 // renderActionsContent builds the Actions tab content.
 func (m *AppModel) renderActionsContent(send func(masc.Msg)) masc.ComponentOrHTML {
-	return elem.Div(
+	return components.Container(
 		components.Button("Fetch Accounts", components.VariantBrand, func(e *masc.Event) {
 			send(FetchAccountsMsg{})
 		}),
@@ -210,15 +209,13 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 	var data []masc.MarkupOrChild
 	if m.Loading {
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-m-top_medium", "slds-align_absolute-center")),
-				components.Spinner("medium"),
+			components.MarginTop(components.SpaceMedium,
+				components.LoadingSpinner("medium"),
 			),
 		)
 	} else if len(m.Rows) > 0 {
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-m-top_medium")),
+			components.MarginTop(components.SpaceMedium,
 				components.Select(
 					"Limit",
 					[]components.SelectOption{
@@ -235,8 +232,7 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 			),
 		)
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-m-top_medium")),
+			components.MarginTop(components.SpaceMedium,
 				components.Checkbox(
 					"Only names containing 'A'",
 					m.FilterAOnly,
@@ -247,8 +243,7 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 			),
 		)
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-m-top_medium")),
+			components.MarginTop(components.SpaceMedium,
 				components.RadioGroup(
 					"filtermode",
 					"Filter Mode",
@@ -262,8 +257,7 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 			),
 		)
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-m-top_medium")),
+			components.MarginTop(components.SpaceMedium,
 				components.TextInput("Filter by Name", m.InputValue, "Enter substring", func(e *masc.Event) {
 					send(InputMsg{Value: e.Target.Get("value").String()})
 				}),
@@ -275,8 +269,7 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 			suggestions = append(suggestions, components.LookupOption{Label: name, Value: name})
 		}
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-m-top_medium")),
+			components.MarginTop(components.SpaceMedium,
 				components.Lookup(
 					"Select by Name",
 					suggestions,
@@ -304,28 +297,28 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 		if len(m.Rows) > 0 {
 			percent := len(filtered) * 100 / len(m.Rows)
 			data = append(data,
-				elem.Div(
-					masc.Markup(masc.Class("slds-m-top_medium")),
+				components.MarginTop(components.SpaceMedium,
 					components.ProgressBar(percent),
 				),
 			)
 		}
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-m-top_medium")),
+			components.MarginTop(components.SpaceMedium,
 				components.DataTable([]string{"Name", "First Contact"}, filtered),
 			),
 		)
 	} else {
 		// Show default message when no data has been fetched yet
 		data = append(data,
-			elem.Div(
-				masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium")),
-				masc.Text("Click 'Fetch Accounts' to load account data and explore the data table features."),
+			components.Spacer(components.SpaceOptions{
+				PaddingHorizontal: components.SpaceMedium,
+				MarginTop:         components.SpaceMedium,
+			},
+				components.Text("Click 'Fetch Accounts' to load account data and explore the data table features."),
 			),
 		)
 	}
-	return elem.Div(data...)
+	return components.Container(data...)
 }
 
 // renderPageLayout builds the main page header, tabs, and card.
@@ -357,60 +350,64 @@ func (m *AppModel) renderBreadcrumb() masc.ComponentOrHTML {
 		{Label: "Home", Href: "#"},
 		{Label: "Thunder Demo", Href: "#"},
 	})
-	return elem.Div(
-		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-bottom_small")),
-		raw,
-	)
+	return components.Spacer(components.SpaceOptions{
+		PaddingHorizontal: components.SpaceMedium,
+		MarginBottom:      components.SpaceSmall,
+	}, raw)
 }
 
 // renderObjectInfoContent builds the Object Info tab content.
 func (m *AppModel) renderObjectInfoContent(send func(masc.Msg)) masc.ComponentOrHTML {
 	if m.Loading && m.ObjectInfo == nil {
-		return elem.Div(
-			masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium", "slds-align_absolute-center")),
-			components.Spinner("medium"),
+		return components.Spacer(components.SpaceOptions{
+			PaddingHorizontal: components.SpaceMedium,
+			MarginTop:         components.SpaceMedium,
+		},
+			components.LoadingSpinner("medium"),
 		)
 	}
 
 	if m.ObjectInfo == nil {
-		return elem.Div(
-			masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium")),
-			masc.Text("Click 'Get Account Info' to fetch Account object metadata."),
+		return components.Spacer(components.SpaceOptions{
+			PaddingHorizontal: components.SpaceMedium,
+			MarginTop:         components.SpaceMedium,
+		},
+			components.Text("Click 'Get Account Info' to fetch Account object metadata."),
 		)
 	}
 
 	info := m.ObjectInfo
-	return elem.Div(
-		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium")),
-		elem.Heading3(
-			masc.Markup(masc.Class("slds-text-heading_medium", "slds-m-bottom_medium")),
-			masc.Text("Account Object Information"),
+	return components.Spacer(components.SpaceOptions{
+		PaddingHorizontal: components.SpaceMedium,
+		MarginTop:         components.SpaceMedium,
+	},
+		components.MarginBottom(components.SpaceMedium,
+			components.Heading("Account Object Information", components.HeadingMedium),
 		),
 		components.Grid(
-			components.GridColumn("1-of-2", components.Card("Basic Info", elem.Div(
-				elem.Paragraph(masc.Text(fmt.Sprintf("API Name: %s", info.APIName))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Label: %s", info.Label))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Label Plural: %s", info.LabelPlural))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Key Prefix: %s", info.KeyPrefix))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Custom: %t", info.Custom))),
+			components.GridColumn("1-of-2", components.Card("Basic Info", components.Container(
+				components.Paragraph(fmt.Sprintf("API Name: %s", info.APIName)),
+				components.Paragraph(fmt.Sprintf("Label: %s", info.Label)),
+				components.Paragraph(fmt.Sprintf("Label Plural: %s", info.LabelPlural)),
+				components.Paragraph(fmt.Sprintf("Key Prefix: %s", info.KeyPrefix)),
+				components.Paragraph(fmt.Sprintf("Custom: %t", info.Custom)),
 			))),
-			components.GridColumn("1-of-2", components.Card("Capabilities", elem.Div(
-				elem.Paragraph(masc.Text(fmt.Sprintf("Createable: %t", info.Createable))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Updateable: %t", info.Updateable))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Deletable: %t", info.Deletable))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Queryable: %t", info.Queryable))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Searchable: %t", info.Searchable))),
+			components.GridColumn("1-of-2", components.Card("Capabilities", components.Container(
+				components.Paragraph(fmt.Sprintf("Createable: %t", info.Createable)),
+				components.Paragraph(fmt.Sprintf("Updateable: %t", info.Updateable)),
+				components.Paragraph(fmt.Sprintf("Deletable: %t", info.Deletable)),
+				components.Paragraph(fmt.Sprintf("Queryable: %t", info.Queryable)),
+				components.Paragraph(fmt.Sprintf("Searchable: %t", info.Searchable)),
 			))),
 		),
-		elem.Div(
-			masc.Markup(masc.Class("slds-m-top_medium")),
-			components.Card("Additional Info", elem.Div(
-				elem.Paragraph(masc.Text(fmt.Sprintf("Feed Enabled: %t", info.FeedEnabled))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("MRU Enabled: %t", info.MRUEnabled))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Layoutable: %t", info.Layoutable))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Theme Color: %s", info.ThemeInfo.Color))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Number of Fields: %d", len(info.Fields)))),
-				elem.Paragraph(masc.Text(fmt.Sprintf("Number of Child Relationships: %d", len(info.ChildRelationships)))),
+		components.MarginTop(components.SpaceMedium,
+			components.Card("Additional Info", components.Container(
+				components.Paragraph(fmt.Sprintf("Feed Enabled: %t", info.FeedEnabled)),
+				components.Paragraph(fmt.Sprintf("MRU Enabled: %t", info.MRUEnabled)),
+				components.Paragraph(fmt.Sprintf("Layoutable: %t", info.Layoutable)),
+				components.Paragraph(fmt.Sprintf("Theme Color: %s", info.ThemeInfo.Color)),
+				components.Paragraph(fmt.Sprintf("Number of Fields: %d", len(info.Fields))),
+				components.Paragraph(fmt.Sprintf("Number of Child Relationships: %d", len(info.ChildRelationships))),
 			)),
 		),
 	)
@@ -418,13 +415,15 @@ func (m *AppModel) renderObjectInfoContent(send func(masc.Msg)) masc.ComponentOr
 
 // renderLayoutContent builds the Layout tab content with a grid demonstration.
 func (m *AppModel) renderLayoutContent(send func(masc.Msg)) masc.ComponentOrHTML {
-	return elem.Div(
-		masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_large")),
-		masc.Text("Grid Demonstration:"),
+	return components.Spacer(components.SpaceOptions{
+		PaddingHorizontal: components.SpaceMedium,
+		MarginTop:         components.SpaceLarge,
+	},
+		components.Text("Grid Demonstration:"),
 		components.Grid(
-			components.GridColumn("1-of-3", components.Card("Column 1", masc.Text("This is column 1"))),
-			components.GridColumn("1-of-3", components.Card("Column 2", masc.Text("This is column 2"))),
-			components.GridColumn("1-of-3", components.Card("Column 3", masc.Text("This is column 3"))),
+			components.GridColumn("1-of-3", components.Card("Column 1", components.Text("This is column 1"))),
+			components.GridColumn("1-of-3", components.Card("Column 2", components.Text("This is column 2"))),
+			components.GridColumn("1-of-3", components.Card("Column 3", components.Text("This is column 3"))),
 		),
 	)
 }
