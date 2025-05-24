@@ -1,8 +1,8 @@
 package components
 
 import (
-	"testing"
 	"github.com/octoberswimmer/masc"
+	"testing"
 )
 
 // TestTextareaBasic verifies that Textarea returns a component with basic parameters.

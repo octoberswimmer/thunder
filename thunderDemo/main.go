@@ -316,6 +316,14 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 				components.DataTable([]string{"Name", "First Contact"}, filtered),
 			),
 		)
+	} else {
+		// Show default message when no data has been fetched yet
+		data = append(data,
+			elem.Div(
+				masc.Markup(masc.Class("slds-p-horizontal_medium", "slds-m-top_medium")),
+				masc.Text("Click 'Fetch Accounts' to load account data and explore the data table features."),
+			),
+		)
 	}
 	return elem.Div(data...)
 }
