@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	salesforce "github.com/octoberswimmer/thunder/salesforce"
@@ -232,6 +234,27 @@ func shouldDisableWorkspace(targetDir string) bool {
 	}
 
 	return true // Target not in workspace, disable GOWORK
+}
+
+// findFreePort finds and reserves a free port, returning both the port and listener
+func findFreePort(preferredPort int) (int, net.Listener, error) {
+	// First try the preferred port
+	if preferredPort > 0 {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", preferredPort))
+		if err == nil {
+			return preferredPort, ln, nil
+		}
+		fmt.Printf("Port %d is in use, finding alternative...\n", preferredPort)
+	}
+
+	// Let OS assign a free port
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return 0, nil, err
+	}
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	return port, ln, nil
 }
 
 // copyFile copies a file from src to dst, creating parent directories.
@@ -492,26 +515,53 @@ func runServe(cmd *cobra.Command, args []string) error {
 	buildMutex.Unlock()
 	go watchAndRebuild(serveDir)
 
-	fmt.Printf("Serving Thunder app on port %d (watching %s)...\n", servePort, serveDir)
-	// Open default browser to the served app
-	urlStr := fmt.Sprintf("http://localhost:%d", servePort)
-	go func() {
-		if err := desktop.Open(urlStr); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to open browser: %v\n", err)
-		}
-	}()
-	// Proxy Salesforce REST API requests
+	// Find and reserve a free port
+	actualPort, listener, err := findFreePort(servePort)
+	if err != nil {
+		return fmt.Errorf("Error finding free port: %w", err)
+	}
+	defer listener.Close()
+
+	fmt.Printf("Serving Thunder app on port %d (watching %s)...\n", actualPort, serveDir)
+
+	// Set up HTTP handlers
 	http.HandleFunc("/services/", proxyHandler)
-	// Serve static assets
 	http.HandleFunc("/bundle.wasm", wasmHandler)
 	http.HandleFunc("/wasm_exec.js", wasmExecHandler)
-	// Serve index HTML
 	http.HandleFunc("/", indexHandler)
-	address := fmt.Sprintf(":%d", servePort)
-	if err := http.ListenAndServe(address, nil); err != nil {
-		return fmt.Errorf("Error starting server: %w", err)
-	}
-	return nil
+
+	// Start the server in a goroutine so we can open browser after it starts
+	server := &http.Server{}
+	serverStarted := make(chan bool, 1)
+	serverErr := make(chan error, 1)
+
+	go func() {
+		// Signal that we're about to start the server
+		serverStarted <- true
+		serverErr <- server.Serve(listener)
+	}()
+
+	// Wait for server to start, then open browser
+	urlStr := fmt.Sprintf("http://localhost:%d", actualPort)
+	go func() {
+		select {
+		case <-serverStarted:
+			// Give server a moment to fully initialize
+			time.Sleep(100 * time.Millisecond)
+			// Try to open browser
+			if err := desktop.Open(urlStr); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to open browser: %v\n", err)
+			}
+		case err := <-serverErr:
+			// Server failed to start immediately, don't open browser
+			if err != nil && err != http.ErrServerClosed {
+				fmt.Fprintf(os.Stderr, "Server failed to start: %v\n", err)
+			}
+		}
+	}()
+
+	// Wait for server to finish or fail
+	return <-serverErr
 }
 
 // sanitizeStaticResourceName converts a name to a valid static resource API name (alphanumeric, begins with letter).
