@@ -339,6 +339,14 @@ func watchAndRebuild(appDir string) {
 		}
 	}
 
+	// Debounce mechanism for rebuilds
+	rebuildTimer := time.NewTimer(0)
+	if !rebuildTimer.Stop() {
+		<-rebuildTimer.C
+	}
+	rebuildPending := false
+	debounceDelay := 500 * time.Millisecond
+
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -348,12 +356,22 @@ func watchAndRebuild(appDir string) {
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
 				ext := filepath.Ext(event.Name)
 				if ext == ".go" || ext == ".mod" || ext == ".sum" {
-					fmt.Printf("File changed (%s), rebuilding...\n", event.Name)
-					newBuildDir, err := buildWASM(appDir)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "Error rebuilding WASM: %v\n", err)
-						continue
+					fmt.Printf("File changed (%s), scheduling rebuild...\n", event.Name)
+					// Reset the timer to debounce multiple rapid changes
+					if !rebuildTimer.Stop() && rebuildPending {
+						<-rebuildTimer.C
 					}
+					rebuildTimer.Reset(debounceDelay)
+					rebuildPending = true
+				}
+			}
+		case <-rebuildTimer.C:
+			if rebuildPending {
+				fmt.Println("Rebuilding...")
+				newBuildDir, err := buildWASM(appDir)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error rebuilding WASM: %v\n", err)
+				} else {
 					buildMutex.Lock()
 					old := currentBuildDir
 					currentBuildDir = newBuildDir
@@ -361,6 +379,7 @@ func watchAndRebuild(appDir string) {
 					os.RemoveAll(old)
 					fmt.Println("Rebuild complete")
 				}
+				rebuildPending = false
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
