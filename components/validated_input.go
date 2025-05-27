@@ -1,6 +1,10 @@
 package components
 
 import (
+	"fmt"
+	"math/rand"
+	"time"
+
 	"github.com/octoberswimmer/masc"
 	"github.com/octoberswimmer/masc/elem"
 	"github.com/octoberswimmer/masc/event"
@@ -12,15 +16,75 @@ type ValidationState struct {
 	Required     bool
 	ErrorMessage string
 	HelpText     string
+	Tooltip      string
+	Placeholder  string
+}
+
+// Convenience constructors for common ValidationState configurations
+
+// WithTooltip creates a ValidationState with just a tooltip
+func WithTooltip(tooltip string) ValidationState {
+	return ValidationState{Tooltip: tooltip}
+}
+
+// WithPlaceholder creates a ValidationState with just a placeholder
+func WithPlaceholder(placeholder string) ValidationState {
+	return ValidationState{Placeholder: placeholder}
+}
+
+// WithTooltipAndPlaceholder creates a ValidationState with both tooltip and placeholder
+func WithTooltipAndPlaceholder(tooltip, placeholder string) ValidationState {
+	return ValidationState{Tooltip: tooltip, Placeholder: placeholder}
+}
+
+// Required creates a ValidationState marked as required
+func Required() ValidationState {
+	return ValidationState{Required: true}
+}
+
+// RequiredWithTooltip creates a required ValidationState with a tooltip
+func RequiredWithTooltip(tooltip string) ValidationState {
+	return ValidationState{Required: true, Tooltip: tooltip}
+}
+
+// generateTooltipID generates a unique ID for tooltips
+func generateTooltipID() string {
+	rand.Seed(time.Now().UnixNano())
+	return fmt.Sprintf("tooltip-%d", rand.Intn(1000000))
+}
+
+// renderTooltip creates an SLDS tooltip element
+func renderTooltip(id, text string) masc.ComponentOrHTML {
+	if text == "" {
+		return nil
+	}
+
+	return elem.Div(
+		masc.Markup(
+			masc.Class("slds-popover", "slds-popover_tooltip", "slds-fall-into-ground"),
+			masc.Property("id", id),
+			masc.Property("role", "tooltip"),
+		),
+		elem.Div(
+			masc.Markup(masc.Class("slds-popover__body")),
+			masc.Text(text),
+		),
+	)
+}
+
+// addTooltipAttributes adds necessary attributes for tooltip functionality
+func addTooltipAttributes(existing []masc.Applyer, tooltipID, tooltipText string) []masc.Applyer {
+	// We don't add tooltip attributes to the input since we're using help icon pattern
+	return existing
 }
 
 // ValidatedTextInput renders an SLDS styled text input with validation support.
 // label is the form element label text.
 // value is the current input value.
-// placeholder is optional placeholder text.
-// validation contains error state, required flag, and messages.
+// validation contains error state, required flag, messages, tooltip, and placeholder.
 // onInput is the input event handler.
-func ValidatedTextInput(label, value, placeholder string, validation ValidationState, onInput func(*masc.Event)) masc.ComponentOrHTML {
+func ValidatedTextInput(label, value string, validation ValidationState, onInput func(*masc.Event)) masc.ComponentOrHTML {
+
 	// Build form element classes
 	formClasses := []string{"slds-form-element", "slds-m-bottom_small"}
 	inputClasses := []string{"slds-input"}
@@ -29,7 +93,7 @@ func ValidatedTextInput(label, value, placeholder string, validation ValidationS
 		formClasses = append(formClasses, "slds-has-error")
 	}
 
-	// Build label with required indicator
+	// Build label with required indicator and tooltip icon
 	labelContent := []masc.MarkupOrChild{masc.Text(label)}
 	if validation.Required {
 		labelContent = append(labelContent,
@@ -38,6 +102,27 @@ func ValidatedTextInput(label, value, placeholder string, validation ValidationS
 				masc.Text(" *"),
 			),
 		)
+	}
+	if validation.Tooltip != "" {
+		labelContent = append(labelContent,
+			elem.Span(
+				masc.Markup(
+					masc.Class("slds-m-left_xx-small", "slds-text-color_weak"),
+					masc.Property("title", validation.Tooltip),
+				),
+				masc.Text("ⓘ"),
+			),
+		)
+	}
+
+	// Build input properties with tooltip support
+	inputProps := []masc.Applyer{
+		masc.Class(inputClasses...),
+		masc.Property("type", "text"),
+		masc.Property("value", value),
+		masc.Property("placeholder", validation.Placeholder),
+		masc.Property("required", validation.Required),
+		event.Input(onInput),
 	}
 
 	// Build the form element
@@ -52,14 +137,7 @@ func ValidatedTextInput(label, value, placeholder string, validation ValidationS
 		elem.Div(
 			masc.Markup(masc.Class("slds-form-element__control")),
 			elem.Input(
-				masc.Markup(
-					masc.Class(inputClasses...),
-					masc.Property("type", "text"),
-					masc.Property("value", value),
-					masc.Property("placeholder", placeholder),
-					masc.Property("required", validation.Required),
-					event.Input(onInput),
-				),
+				masc.Markup(inputProps...),
 			),
 		),
 	}
@@ -93,11 +171,11 @@ func ValidatedTextInput(label, value, placeholder string, validation ValidationS
 // ValidatedTextarea renders an SLDS styled textarea with validation support.
 // label is the form element label text.
 // value is the current textarea value.
-// placeholder is optional placeholder text.
 // rows is the number of visible text lines (defaults to 3 if 0).
-// validation contains error state, required flag, and messages.
+// validation contains error state, required flag, messages, tooltip, and placeholder.
 // onInput is the input event handler.
-func ValidatedTextarea(label, value, placeholder string, rows int, validation ValidationState, onInput func(*masc.Event)) masc.ComponentOrHTML {
+func ValidatedTextarea(label, value string, rows int, validation ValidationState, onInput func(*masc.Event)) masc.ComponentOrHTML {
+
 	// Default rows if not specified
 	textareaRows := 3
 	if rows > 0 {
@@ -112,7 +190,7 @@ func ValidatedTextarea(label, value, placeholder string, rows int, validation Va
 		formClasses = append(formClasses, "slds-has-error")
 	}
 
-	// Build label with required indicator
+	// Build label with required indicator and tooltip icon
 	labelContent := []masc.MarkupOrChild{masc.Text(label)}
 	if validation.Required {
 		labelContent = append(labelContent,
@@ -121,6 +199,26 @@ func ValidatedTextarea(label, value, placeholder string, rows int, validation Va
 				masc.Text(" *"),
 			),
 		)
+	}
+	if validation.Tooltip != "" {
+		labelContent = append(labelContent,
+			elem.Span(
+				masc.Markup(
+					masc.Class("slds-m-left_xx-small", "slds-text-color_weak"),
+					masc.Property("title", validation.Tooltip),
+				),
+				masc.Text("ⓘ"),
+			),
+		)
+	}
+
+	// Build textarea properties with tooltip support
+	textareaProps := []masc.Applyer{
+		masc.Class(textareaClasses...),
+		masc.Property("placeholder", validation.Placeholder),
+		masc.Property("rows", textareaRows),
+		masc.Property("required", validation.Required),
+		event.Input(onInput),
 	}
 
 	// Build the form element
@@ -135,13 +233,7 @@ func ValidatedTextarea(label, value, placeholder string, rows int, validation Va
 		elem.Div(
 			masc.Markup(masc.Class("slds-form-element__control")),
 			elem.TextArea(
-				masc.Markup(
-					masc.Class(textareaClasses...),
-					masc.Property("placeholder", placeholder),
-					masc.Property("rows", textareaRows),
-					masc.Property("required", validation.Required),
-					event.Input(onInput),
-				),
+				masc.Markup(textareaProps...),
 				masc.Text(value),
 			),
 		),
@@ -180,6 +272,7 @@ func ValidatedTextarea(label, value, placeholder string, rows int, validation Va
 // validation contains error state, required flag, and messages.
 // onChange is the change event handler.
 func ValidatedSelect(label string, options []SelectOption, selected string, validation ValidationState, onChange func(*masc.Event)) masc.ComponentOrHTML {
+
 	// Build form element classes
 	formClasses := []string{"slds-form-element", "slds-m-bottom_small"}
 
@@ -187,13 +280,24 @@ func ValidatedSelect(label string, options []SelectOption, selected string, vali
 		formClasses = append(formClasses, "slds-has-error")
 	}
 
-	// Build label with required indicator
+	// Build label with required indicator and tooltip icon
 	labelContent := []masc.MarkupOrChild{masc.Text(label)}
 	if validation.Required {
 		labelContent = append(labelContent,
 			elem.Span(
 				masc.Markup(masc.Class("slds-required")),
 				masc.Text(" *"),
+			),
+		)
+	}
+	if validation.Tooltip != "" {
+		labelContent = append(labelContent,
+			elem.Span(
+				masc.Markup(
+					masc.Class("slds-m-left_xx-small", "slds-text-color_weak"),
+					masc.Property("title", validation.Tooltip),
+				),
+				masc.Text("ⓘ"),
 			),
 		)
 	}

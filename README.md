@@ -137,11 +137,13 @@ func (m *AppModel) renderPatientForm(send func(masc.Msg)) masc.ComponentOrHTML {
         components.Card("Patient Details",
             components.Grid(
                 components.GridColumn("1-of-2",
-                    components.ValidatedTextInput("First Name", m.firstName, "",
+                    components.ValidatedTextInput("First Name", m.firstName,
                         components.ValidationState{
-                            Required: true,
-                            HasError: m.hasError("firstName"),
+                            Required:     true,
+                            HasError:     m.hasError("firstName"),
                             ErrorMessage: m.errors["firstName"],
+                            Placeholder:  "Enter first name",
+                            Tooltip:      "Legal first name as shown on ID",
                         },
                         func(e *masc.Event) {
                             send(firstNameMsg(e.Target.Get("value").String()))
@@ -149,8 +151,12 @@ func (m *AppModel) renderPatientForm(send func(masc.Msg)) masc.ComponentOrHTML {
                     ),
                 ),
                 components.GridColumn("1-of-2",
-                    components.ValidatedTextInput("Last Name", m.lastName, "",
-                        components.ValidationState{Required: true},
+                    components.ValidatedTextInput("Last Name", m.lastName,
+                        components.ValidationState{
+                            Required:    true,
+                            Placeholder: "Enter last name",
+                            Tooltip:     "Legal last name as shown on ID",
+                        },
                         func(e *masc.Event) {
                             send(lastNameMsg(e.Target.Get("value").String()))
                         },
@@ -194,19 +200,61 @@ type ValidationState struct {
     Required     bool   // Show asterisk indicator
     ErrorMessage string // Error text to display
     HelpText     string // Help text below field
+    Tooltip      string // Tooltip text (shows as help icon next to label)
+    Placeholder  string // Input placeholder text
 }
 ```
 
-### Example: Validated Form
+### Tooltip Support
+Validated components support tooltips that appear as help icons (ⓘ) next to field labels:
+- **Help Icon**: Unicode info symbol appears next to labels when tooltip is provided
+- **Native Tooltip**: Uses HTML `title` attribute for cross-browser compatibility
+- **SLDS Styling**: Proper spacing and color for SLDS compliance
+
+```go
+// Field with tooltip and placeholder
+components.ValidatedTextInput("Phone Number", m.phone, components.ValidationState{
+    Required:    false,
+    Tooltip:     "Include area code. Start international numbers with +",
+    Placeholder: "(555) 123-4567",
+    HelpText:    "Contact phone number (optional)",
+}, func(e *masc.Event) {
+    send(phoneChangedMsg(e.Target.Get("value").String()))
+})
+```
+
+### Convenience Constructors
+Thunder provides convenience functions for common ValidationState configurations:
+```go
+// Simple tooltip
+validation := components.WithTooltip("This field requires special formatting")
+
+// Placeholder only
+validation := components.WithPlaceholder("Enter value here")
+
+// Both tooltip and placeholder
+validation := components.WithTooltipAndPlaceholder("Help text", "placeholder")
+
+// Required field
+validation := components.Required()
+
+// Required field with tooltip
+validation := components.RequiredWithTooltip("This required field needs special attention")
+```
+
+
+### Example: Comprehensive Validated Form
 ```go
 validationState := components.ValidationState{
     HasError:     len(m.email) > 0 && !isValidEmail(m.email),
     Required:     true,
     ErrorMessage: "Please enter a valid email address",
     HelpText:     "We'll use this to send important updates",
+    Tooltip:      "Email format: user@domain.com",
+    Placeholder:  "user@example.com",
 }
 
-components.ValidatedTextInput("Email", m.email, "user@example.com", validationState, func(e *masc.Event) {
+components.ValidatedTextInput("Email", m.email, validationState, func(e *masc.Event) {
     send(emailChangedMsg(e.Target.Get("value").String()))
 })
 ```

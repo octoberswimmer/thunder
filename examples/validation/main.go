@@ -177,20 +177,21 @@ func (m *PatientFormModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 // renderPatientForm builds the main form with ValidatedTextInput components
 func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.ComponentOrHTML {
 	return components.Page(
-		components.PageHeader("Patient Registration", "Enter patient information"),
+		components.PageHeader("Patient Registration", "Enter patient information with tooltip examples"),
 		components.Card("Patient Details",
 			components.Grid(
-				// First Name - Required field with validation
+				// First Name - Required field with validation and tooltip
 				components.GridColumn("1-of-2",
 					components.ValidatedTextInput(
 						"First Name",
 						m.firstName,
-						"Enter first name",
 						components.ValidationState{
 							Required:     true,
 							HasError:     m.hasError("firstName"),
 							ErrorMessage: m.validationErrors["firstName"],
 							HelpText:     "Patient's legal first name",
+							Placeholder:  "Enter first name",
+							Tooltip:      "Enter the patient's legal first name as it appears on their ID",
 						},
 						func(e *masc.Event) {
 							send(firstNameMsg(e.Target.Get("value").String()))
@@ -198,17 +199,18 @@ func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.Component
 					),
 				),
 
-				// Last Name - Required field with validation
+				// Last Name - Required field with validation and tooltip
 				components.GridColumn("1-of-2",
 					components.ValidatedTextInput(
 						"Last Name",
 						m.lastName,
-						"Enter last name",
 						components.ValidationState{
 							Required:     true,
 							HasError:     m.hasError("lastName"),
 							ErrorMessage: m.validationErrors["lastName"],
 							HelpText:     "Patient's legal last name",
+							Placeholder:  "Enter last name",
+							Tooltip:      "Enter the patient's legal last name as it appears on their ID",
 						},
 						func(e *masc.Event) {
 							send(lastNameMsg(e.Target.Get("value").String()))
@@ -216,17 +218,18 @@ func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.Component
 					),
 				),
 
-				// Email - Required with format validation
+				// Email - Required with format validation and tooltip
 				components.GridColumn("1-of-2",
 					components.ValidatedTextInput(
 						"Email Address",
 						m.email,
-						"patient@example.com",
 						components.ValidationState{
 							Required:     true,
 							HasError:     m.hasError("email"),
 							ErrorMessage: m.validationErrors["email"],
 							HelpText:     "Primary contact email",
+							Placeholder:  "patient@example.com",
+							Tooltip:      "We'll use this email for appointment reminders and important communications",
 						},
 						func(e *masc.Event) {
 							send(emailMsg(e.Target.Get("value").String()))
@@ -234,21 +237,67 @@ func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.Component
 					),
 				),
 
-				// Phone - Optional with format validation
+				// Phone - Optional with format validation and helpful tooltip
 				components.GridColumn("1-of-2",
 					components.ValidatedTextInput(
 						"Phone Number",
 						m.phone,
-						"(555) 123-4567",
 						components.ValidationState{
 							Required:     false,
 							HasError:     m.hasError("phone"),
 							ErrorMessage: m.validationErrors["phone"],
 							HelpText:     "Contact phone number (optional)",
+							Placeholder:  "(555) 123-4567",
+							Tooltip:      "Include area code. Start international numbers with +",
 						},
 						func(e *masc.Event) {
 							send(phoneMsg(e.Target.Get("value").String()))
 						},
+					),
+				),
+			),
+		),
+
+		// Demonstration of convenience constructors
+		components.Card("Convenience Constructor Examples",
+			components.Grid(
+				// Example using WithTooltip
+				components.GridColumn("1-of-2",
+					components.ValidatedTextInput(
+						"Tooltip Only",
+						"",
+						components.WithTooltip("This field demonstrates the WithTooltip constructor"),
+						func(e *masc.Event) {},
+					),
+				),
+
+				// Example using WithPlaceholder
+				components.GridColumn("1-of-2",
+					components.ValidatedTextInput(
+						"Placeholder Only",
+						"",
+						components.WithPlaceholder("Placeholder text here"),
+						func(e *masc.Event) {},
+					),
+				),
+
+				// Example using WithTooltipAndPlaceholder
+				components.GridColumn("1-of-2",
+					components.ValidatedTextInput(
+						"Tooltip + Placeholder",
+						"",
+						components.WithTooltipAndPlaceholder("Both tooltip and placeholder", "Enter text"),
+						func(e *masc.Event) {},
+					),
+				),
+
+				// Example using RequiredWithTooltip
+				components.GridColumn("1-of-2",
+					components.ValidatedTextInput(
+						"Required + Tooltip",
+						"",
+						components.RequiredWithTooltip("This is a required field with a tooltip"),
+						func(e *masc.Event) {},
 					),
 				),
 			),

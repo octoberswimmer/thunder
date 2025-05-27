@@ -12,8 +12,9 @@ func TestValidatedTextInputBasic(t *testing.T) {
 		Required:     false,
 		ErrorMessage: "",
 		HelpText:     "",
+		Placeholder:  "Test Placeholder",
 	}
-	if comp := ValidatedTextInput("Test Label", "Test Value", "Test Placeholder", validation, nil); comp == nil {
+	if comp := ValidatedTextInput("Test Label", "Test Value", validation, nil); comp == nil {
 		t.Error("ValidatedTextInput returned nil for basic parameters")
 	}
 }
@@ -26,7 +27,7 @@ func TestValidatedTextInputRequired(t *testing.T) {
 		ErrorMessage: "",
 		HelpText:     "This field is required",
 	}
-	if comp := ValidatedTextInput("Required Field", "", "", validation, nil); comp == nil {
+	if comp := ValidatedTextInput("Required Field", "", validation, nil); comp == nil {
 		t.Error("ValidatedTextInput returned nil for required field")
 	}
 }
@@ -39,7 +40,7 @@ func TestValidatedTextInputWithError(t *testing.T) {
 		ErrorMessage: "This field is required",
 		HelpText:     "Help text should not show when error is present",
 	}
-	if comp := ValidatedTextInput("Error Field", "", "", validation, nil); comp == nil {
+	if comp := ValidatedTextInput("Error Field", "", validation, nil); comp == nil {
 		t.Error("ValidatedTextInput returned nil for error state")
 	}
 }
@@ -51,10 +52,73 @@ func TestValidatedTextInputWithHandler(t *testing.T) {
 		Required:     false,
 		ErrorMessage: "",
 		HelpText:     "Enter some text",
+		Placeholder:  "placeholder",
 	}
 	handler := func(e *masc.Event) {}
-	if comp := ValidatedTextInput("Handler Test", "value", "placeholder", validation, handler); comp == nil {
+	if comp := ValidatedTextInput("Handler Test", "value", validation, handler); comp == nil {
 		t.Error("ValidatedTextInput returned nil with event handler")
+	}
+}
+
+// TestValidatedTextInputWithTooltip verifies tooltip functionality.
+func TestValidatedTextInputWithTooltip(t *testing.T) {
+	validation := ValidationState{
+		HasError:     false,
+		Required:     false,
+		ErrorMessage: "",
+		HelpText:     "",
+		Tooltip:      "This is a helpful tooltip",
+		Placeholder:  "Enter text here",
+	}
+	if comp := ValidatedTextInput("Tooltip Field", "", validation, nil); comp == nil {
+		t.Error("ValidatedTextInput returned nil with tooltip")
+	}
+}
+
+// TestValidatedTextInputWithTooltipAndRequired verifies tooltip with required field.
+func TestValidatedTextInputWithTooltipAndRequired(t *testing.T) {
+	validation := ValidationState{
+		HasError:     false,
+		Required:     true,
+		ErrorMessage: "",
+		HelpText:     "",
+		Tooltip:      "Required field with tooltip",
+	}
+	if comp := ValidatedTextInput("Required Tooltip Field", "", validation, nil); comp == nil {
+		t.Error("ValidatedTextInput returned nil with tooltip and required")
+	}
+}
+
+// TestValidatedTextInputConvenienceConstructors verifies convenience constructor functions.
+func TestValidatedTextInputConvenienceConstructors(t *testing.T) {
+	// Test WithTooltip
+	tooltipValidation := WithTooltip("Test tooltip")
+	if comp := ValidatedTextInput("Tooltip Test", "", tooltipValidation, nil); comp == nil {
+		t.Error("ValidatedTextInput returned nil with WithTooltip constructor")
+	}
+
+	// Test WithPlaceholder
+	placeholderValidation := WithPlaceholder("Test placeholder")
+	if comp := ValidatedTextInput("Placeholder Test", "", placeholderValidation, nil); comp == nil {
+		t.Error("ValidatedTextInput returned nil with WithPlaceholder constructor")
+	}
+
+	// Test WithTooltipAndPlaceholder
+	bothValidation := WithTooltipAndPlaceholder("Test tooltip", "Test placeholder")
+	if comp := ValidatedTextInput("Both Test", "", bothValidation, nil); comp == nil {
+		t.Error("ValidatedTextInput returned nil with WithTooltipAndPlaceholder constructor")
+	}
+
+	// Test Required
+	requiredValidation := Required()
+	if comp := ValidatedTextInput("Required Test", "", requiredValidation, nil); comp == nil {
+		t.Error("ValidatedTextInput returned nil with Required constructor")
+	}
+
+	// Test RequiredWithTooltip
+	requiredTooltipValidation := RequiredWithTooltip("Required tooltip")
+	if comp := ValidatedTextInput("Required Tooltip Test", "", requiredTooltipValidation, nil); comp == nil {
+		t.Error("ValidatedTextInput returned nil with RequiredWithTooltip constructor")
 	}
 }
 
@@ -65,8 +129,9 @@ func TestValidatedTextareaBasic(t *testing.T) {
 		Required:     false,
 		ErrorMessage: "",
 		HelpText:     "",
+		Placeholder:  "Test Placeholder",
 	}
-	if comp := ValidatedTextarea("Test Label", "Test Value", "Test Placeholder", 3, validation, nil); comp == nil {
+	if comp := ValidatedTextarea("Test Label", "Test Value", 3, validation, nil); comp == nil {
 		t.Error("ValidatedTextarea returned nil for basic parameters")
 	}
 }
@@ -79,7 +144,7 @@ func TestValidatedTextareaRequired(t *testing.T) {
 		ErrorMessage: "",
 		HelpText:     "This field is required",
 	}
-	if comp := ValidatedTextarea("Required Textarea", "", "", 5, validation, nil); comp == nil {
+	if comp := ValidatedTextarea("Required Textarea", "", 5, validation, nil); comp == nil {
 		t.Error("ValidatedTextarea returned nil for required field")
 	}
 }
@@ -92,8 +157,23 @@ func TestValidatedTextareaWithError(t *testing.T) {
 		ErrorMessage: "This field is required",
 		HelpText:     "Help text should not show when error is present",
 	}
-	if comp := ValidatedTextarea("Error Textarea", "", "", 2, validation, nil); comp == nil {
+	if comp := ValidatedTextarea("Error Textarea", "", 2, validation, nil); comp == nil {
 		t.Error("ValidatedTextarea returned nil for error state")
+	}
+}
+
+// TestValidatedTextareaWithTooltip verifies textarea tooltip functionality.
+func TestValidatedTextareaWithTooltip(t *testing.T) {
+	validation := ValidationState{
+		HasError:     false,
+		Required:     false,
+		ErrorMessage: "",
+		HelpText:     "",
+		Tooltip:      "This textarea has a tooltip",
+		Placeholder:  "Enter detailed text here",
+	}
+	if comp := ValidatedTextarea("Tooltip Textarea", "", 4, validation, nil); comp == nil {
+		t.Error("ValidatedTextarea returned nil with tooltip")
 	}
 }
 
@@ -144,6 +224,25 @@ func TestValidatedSelectWithError(t *testing.T) {
 	}
 	if comp := ValidatedSelect("Error Select", options, "", validation, nil); comp == nil {
 		t.Error("ValidatedSelect returned nil for error state")
+	}
+}
+
+// TestValidatedSelectWithTooltip verifies select tooltip functionality.
+func TestValidatedSelectWithTooltip(t *testing.T) {
+	options := []SelectOption{
+		{Label: "Choose...", Value: ""},
+		{Label: "Option 1", Value: "opt1"},
+		{Label: "Option 2", Value: "opt2"},
+	}
+	validation := ValidationState{
+		HasError:     false,
+		Required:     false,
+		ErrorMessage: "",
+		HelpText:     "",
+		Tooltip:      "Select one of the available options",
+	}
+	if comp := ValidatedSelect("Tooltip Select", options, "", validation, nil); comp == nil {
+		t.Error("ValidatedSelect returned nil with tooltip")
 	}
 }
 
