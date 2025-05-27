@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/octoberswimmer/masc"
@@ -44,6 +45,38 @@ func Required() ValidationState {
 
 // RequiredWithTooltip creates a required ValidationState with a tooltip
 func RequiredWithTooltip(tooltip string) ValidationState {
+	return ValidationState{Required: true, Tooltip: tooltip}
+}
+
+// Validation helper functions
+
+// IsEmptyOrWhitespace checks if a string is empty or contains only whitespace
+func IsEmptyOrWhitespace(s string) bool {
+	return strings.TrimSpace(s) == ""
+}
+
+// ValidateRequired validates that a required field is not empty or whitespace-only
+func ValidateRequired(value, fieldName string) ValidationState {
+	if IsEmptyOrWhitespace(value) {
+		return ValidationState{
+			Required:     true,
+			HasError:     true,
+			ErrorMessage: fieldName + " is required",
+		}
+	}
+	return ValidationState{Required: true}
+}
+
+// ValidateRequiredWithTooltip validates a required field with tooltip support
+func ValidateRequiredWithTooltip(value, fieldName, tooltip string) ValidationState {
+	if IsEmptyOrWhitespace(value) {
+		return ValidationState{
+			Required:     true,
+			HasError:     true,
+			ErrorMessage: fieldName + " is required",
+			Tooltip:      tooltip,
+		}
+	}
 	return ValidationState{Required: true, Tooltip: tooltip}
 }
 
