@@ -21,14 +21,14 @@
 #### Form Components
 - [x] **TextInput** (`input.go`) - Basic text input with label
 - [x] **Textarea** (`textarea.go`) - Multi-line text input
-- [x] **Checkbox** (`checkbox.go`) - Boolean input 
+- [x] **Checkbox** (`checkbox.go`) - Boolean input
 - [x] **Select** (`select.go`) - Dropdown selection
 - [x] **RadioGroup** (`radiogroup.go`) - Single-choice options
 - [x] **Datepicker** (`datepicker.go`) - Date selection
 - [x] **Lookup** (`lookup.go`) - Autocomplete/search input
 - [x] **Form Validation Framework** (`validated_input.go`) - Field-level validation with ValidationState
 
-#### Navigation Components  
+#### Navigation Components
 - [x] **Breadcrumb** (`breadcrumb.go`) - Navigation hierarchy
 - [x] **Tabs** (`tabs.go`) - Tabbed navigation with content panels
 
@@ -45,6 +45,7 @@
 - [x] **PageHeader** (`pageheader.go`) - Page-level heading
 
 #### Feedback Components
+- [x] **Prompt** (`prompt.go`) - Actionable overlay dialogs
 - [x] **Modal** (`modal.go`) - Overlay dialogs
 - [x] **Toast** (`toast.go`) - Notification messages
 - [x] **Spinner** (`spinner.go`) - Loading indicators
@@ -95,42 +96,36 @@
    - *Effort: LOW* - Extension of Grid system
    - *Usage: Medium* - Dashboard widgets, gallery views
 
-#### Feedback Components
-8. **Prompt/Confirmation Dialog** - User decision dialogs
-   - *Priority: HIGH* - Critical for destructive actions
-   - *Effort: LOW* - Extension of Modal component
-   - *Usage: High* - Delete confirmations, unsaved changes
-
 ### Nice-to-Have Components (Medium Priority) 🟡
 
 #### Advanced Form Components
-9. **DateTime Picker** - Combined date and time selection
+8. **DateTime Picker** - Combined date and time selection
    - *Effort: MEDIUM* - Combines existing Datepicker with time
    - *Usage: Medium* - Scheduling, event creation
 
-10. **Color Picker** - Color selection input
+9. **Color Picker** - Color selection input
     - *Effort: MEDIUM* - Color wheel/palette implementation
     - *Usage: Low* - Theming, customization features
 
-11. **Rich Text Editor** - WYSIWYG text editing
+10. **Rich Text Editor** - WYSIWYG text editing
     - *Effort: HIGH* - Complex text formatting capabilities
     - *Usage: Medium* - Email composition, content editing
 
-#### Data Display Components  
-12. **Progress Ring** - Circular progress indicator
+#### Data Display Components
+11. **Progress Ring** - Circular progress indicator
     - *Effort: LOW* - SVG-based circular progress
     - *Usage: Low* - Alternative to ProgressBar
 
-13. **Carousel** - Image/content slideshow
+12. **Carousel** - Image/content slideshow
     - *Effort: MEDIUM* - Touch/swipe support, navigation
     - *Usage: Low* - Product galleries, onboarding
 
 #### Specialized Components
-14. **Avatar** - User profile images
+13. **Avatar** - User profile images
     - *Effort: LOW* - Image with fallback initials
     - *Usage: Medium* - User lists, profiles
 
-15. **Button Group** - Grouped action buttons
+14. **Button Group** - Grouped action buttons
     - *Effort: LOW* - Styling for button collections
     - *Usage: Medium* - Toolbar actions, toggle groups
 
@@ -141,7 +136,7 @@
 - [x] **Form Validation Framework** - Msg-based validation state with ValidationState
 - [x] **Tooltip** - Essential UX improvement with help icons
 
-#### Phase 2: Navigation & Menus (Sprint 3-4)  
+#### Phase 2: Navigation & Menus (Sprint 3-4)
 - **Vertical Navigation** - Tree-like Elm Architecture model
 - **Menu/Dropdown** - Click handling with outside detection
 - **Prompt/Confirmation** - Modal variant for decisions
@@ -160,14 +155,14 @@
 
 #### State Management Patterns
 - [x] **Form Validation**: Field-level validation state in model (ValidationState struct)
-- **Navigation**: Route/selection state with Msg routing  
+- **Navigation**: Route/selection state with Msg routing
 - **Tree Components**: Recursive data structures with expand state
 - **File Upload**: Progress tracking via Cmd/Msg patterns
 - [x] **Tooltips**: Simple title attribute approach (no complex positioning state needed)
 
 #### Message Patterns
 - [x] `ValidationMsg { Field, Error }` - Field validation results (implemented in examples)
-- `NavigationMsg { Route, Action }` - Navigation state changes  
+- `NavigationMsg { Route, Action }` - Navigation state changes
 - `TreeToggleMsg { NodeId, Expanded }` - Tree node expansion
 - `FileUploadMsg { Progress, Status }` - Upload progress updates
 

@@ -39,6 +39,9 @@ type LastModifiedDateChangeMsg struct{ Value string }
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
 
+// TogglePromptMsg represents toggling the demo prompt visibility.
+type TogglePromptMsg struct{}
+
 // FetchObjectInfoMsg represents the user clicking the fetch object info button.
 type FetchObjectInfoMsg struct{}
 
@@ -72,6 +75,7 @@ type AppModel struct {
 	// Overlays and toast state
 	ShowModal    bool
 	ShowToast    bool
+	ShowPrompt   bool
 	ToastVariant components.ToastVariant
 	ToastHeader  string
 	ToastMessage string
@@ -143,6 +147,10 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		m.ToastHeader = "Success"
 		m.ToastMessage = "This is a toast notification."
 		return m, autoHideToastCmd()
+	case TogglePromptMsg:
+		// Toggle prompt visibility
+		m.ShowPrompt = !m.ShowPrompt
+		return m, nil
 	case HideToastMsg:
 		// Hide toast notification
 		m.ShowToast = false
@@ -174,6 +182,9 @@ func (m *AppModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 	if m.ShowToast {
 		children = append(children, m.renderToast(send))
 	}
+	if m.ShowPrompt {
+		children = append(children, m.renderPrompt(send))
+	}
 	return components.Container(children...)
 }
 
@@ -191,6 +202,9 @@ func (m *AppModel) renderActionsContent(send func(masc.Msg)) masc.ComponentOrHTM
 		}),
 		components.Button("Show Toast", components.VariantNeutral, func(e *masc.Event) {
 			send(ShowToastMsg{})
+		}),
+		components.Button("Show Prompt", components.VariantNeutral, func(e *masc.Event) {
+			send(TogglePromptMsg{})
 		}),
 		components.Datepicker("Modified Since", m.LastModifiedDate, func(e *masc.Event) {
 			send(LastModifiedDateChangeMsg{Value: e.Target.Get("value").String()})
@@ -446,6 +460,22 @@ func (m *AppModel) renderToast(send func(masc.Msg)) masc.ComponentOrHTML {
 		m.ToastHeader,
 		m.ToastMessage,
 		func(e *masc.Event) { send(HideToastMsg{}) },
+	)
+}
+
+// renderPrompt builds the demo prompt overlay.
+func (m *AppModel) renderPrompt(send func(masc.Msg)) masc.ComponentOrHTML {
+	return components.Prompt(
+		"Demo Prompt",
+		[]masc.MarkupOrChild{
+			components.Button("Close", components.VariantNeutral, func(e *masc.Event) {
+				send(TogglePromptMsg{})
+			}),
+			components.Button("Ok", components.VariantNeutral, func(e *masc.Event) {
+				send(TogglePromptMsg{})
+			}),
+		},
+		masc.Text("This is a demo prompt"),
 	)
 }
 
