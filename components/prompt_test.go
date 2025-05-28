@@ -10,6 +10,6 @@ import (
 func TestPromptBasic(t *testing.T) {
 	comp := Prompt("Test Prompt", []masc.MarkupOrChild{Button("Okay", VariantNeutral, func(*masc.Event) {})}, masc.Text("Body content"))
 	if comp == nil {
-		t.Error("Prompt returned nil for valid title, body and actons")
+		t.Error("Prompt returned nil for valid title, body and actions")
 	}
 }
