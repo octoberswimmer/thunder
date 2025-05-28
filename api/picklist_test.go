@@ -1,17 +1,97 @@
 package api
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
 func TestUnmarshalPicklistFieldValues(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "picklistvalues.json"))
-	if err != nil {
-		t.Fatalf("failed to read picklistvalues.json: %v", err)
-	}
-	m, err := UnmarshalPicklistFieldValues(data)
+	// Sample picklist values JSON for Account.AccountSource field
+	picklistJSON := `{
+		"picklistFieldValues": {
+			"AccountSource": {
+				"controllerValues": {},
+				"defaultValue": null,
+				"eTag": "b2b9f8c7-3a1d-4e5f-9c7a-1a2b3c4d5e6f",
+				"url": "/services/data/v63.0/ui-api/object-info/Account/picklist-values/012QP000000DsyiYAC/AccountSource",
+				"values": [
+					{
+						"attributes": null,
+						"label": "Advertisement",
+						"validFor": [],
+						"value": "Advertisement"
+					},
+					{
+						"attributes": null,
+						"label": "Cold Call",
+						"validFor": [],
+						"value": "Cold Call"
+					},
+					{
+						"attributes": null,
+						"label": "Employee Referral",
+						"validFor": [],
+						"value": "Employee Referral"
+					},
+					{
+						"attributes": null,
+						"label": "External Referral",
+						"validFor": [],
+						"value": "External Referral"
+					},
+					{
+						"attributes": null,
+						"label": "Partner",
+						"validFor": [],
+						"value": "Partner"
+					},
+					{
+						"attributes": null,
+						"label": "Public Relations",
+						"validFor": [],
+						"value": "Public Relations"
+					},
+					{
+						"attributes": null,
+						"label": "Seminar - Internal",
+						"validFor": [],
+						"value": "Seminar - Internal"
+					},
+					{
+						"attributes": null,
+						"label": "Seminar - Partner",
+						"validFor": [],
+						"value": "Seminar - Partner"
+					},
+					{
+						"attributes": null,
+						"label": "Trade Show",
+						"validFor": [],
+						"value": "Trade Show"
+					},
+					{
+						"attributes": null,
+						"label": "Web",
+						"validFor": [],
+						"value": "Web"
+					},
+					{
+						"attributes": null,
+						"label": "Word of mouth",
+						"validFor": [],
+						"value": "Word of mouth"
+					},
+					{
+						"attributes": null,
+						"label": "Other",
+						"validFor": [],
+						"value": "Other"
+					}
+				]
+			}
+		}
+	}`
+
+	m, err := UnmarshalPicklistFieldValues([]byte(picklistJSON))
 	if err != nil {
 		t.Fatalf("UnmarshalPicklistFieldValues returned error: %v", err)
 	}

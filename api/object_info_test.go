@@ -1,17 +1,96 @@
 package api
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 )
 
 func TestUnmarshalObjectInfo(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "Account.json"))
-	if err != nil {
-		t.Fatalf("failed to read Account.json: %v", err)
-	}
-	info, err := UnmarshalObjectInfo(data)
+	// Sample Account object info JSON with essential fields for testing
+	accountJSON := `{
+		"apiName": "Account",
+		"eTag": "550e8e2e-e09f-4c2c-8b93-4b7dc0f48b3b",
+		"defaultRecordTypeId": "012000000000000AAA",
+		"compactLayoutable": true,
+		"createable": true,
+		"custom": false,
+		"deletable": true,
+		"feedEnabled": true,
+		"keyPrefix": "001",
+		"label": "Account",
+		"labelPlural": "Accounts",
+		"layoutable": true,
+		"mruEnabled": true,
+		"queryable": true,
+		"searchLayoutable": true,
+		"searchable": true,
+		"updateable": true,
+		"nameFields": ["Name"],
+		"childRelationships": [],
+		"dependentFields": {},
+		"themeInfo": {
+			"color": "5867E8",
+			"iconUrl": "/img/icon/t4v35/standard/account_120.png"
+		},
+		"recordTypeInfos": {
+			"012000000000000AAA": {
+				"available": true,
+				"defaultRecordTypeMapping": true,
+				"master": true,
+				"name": "Master",
+				"recordTypeId": "012000000000000AAA"
+			}
+		},
+		"fields": {
+			"Name": {
+				"apiName": "Name",
+				"calculated": false,
+				"compound": false,
+				"createable": true,
+				"custom": false,
+				"dataType": "String",
+				"externalId": false,
+				"filterable": true,
+				"highScaleNumber": false,
+				"htmlFormatted": false,
+				"label": "Account Name",
+				"length": 255,
+				"nameField": true,
+				"polymorphicForeignKey": false,
+				"required": true,
+				"searchPrefilterable": true,
+				"sortable": true,
+				"unique": false,
+				"updateable": true,
+				"controllingFields": [],
+				"referenceToInfos": []
+			},
+			"Id": {
+				"apiName": "Id",
+				"calculated": false,
+				"compound": false,
+				"createable": false,
+				"custom": false,
+				"dataType": "Id",
+				"externalId": false,
+				"filterable": true,
+				"highScaleNumber": false,
+				"htmlFormatted": false,
+				"label": "Account ID",
+				"length": 18,
+				"nameField": false,
+				"polymorphicForeignKey": false,
+				"required": false,
+				"searchPrefilterable": false,
+				"sortable": true,
+				"unique": false,
+				"updateable": false,
+				"controllingFields": [],
+				"referenceToInfos": []
+			}
+		}
+	}`
+
+	info, err := UnmarshalObjectInfo([]byte(accountJSON))
 	if err != nil {
 		t.Fatalf("UnmarshalObjectInfo returned error: %v", err)
 	}
