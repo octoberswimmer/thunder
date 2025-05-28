@@ -6,7 +6,7 @@ import (
 	"github.com/octoberswimmer/masc"
 )
 
-// TestModalBasic verifies that Prompt returns a non-nil component for a title, body and actions.
+// TestPromptBasic verifies that Prompt returns a non-nil component for a title, body and actions.
 func TestPromptBasic(t *testing.T) {
 	comp := Prompt("Test Prompt", []masc.MarkupOrChild{Button("Okay", VariantNeutral, func(*masc.Event) {})}, masc.Text("Body content"))
 	if comp == nil {
