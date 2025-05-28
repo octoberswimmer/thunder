@@ -59,6 +59,13 @@ public with sharing class GoBridge {
 
 	@AuraEnabled
 	public static String callRest(String method, String url, String body) {
+		// Handle Composite requests
+		if (method.equalsIgnoreCase('POST') &&
+			url.startsWith('/services/data/') &&
+			url.contains('/composite')) {
+			return handleCompositeRequest(body);
+		}
+
 		// Handle SOQL cursor pagination via REST-style query locator URLs
 		if (method.equalsIgnoreCase('GET') &&
 			url.startsWith('/services/data/') &&
@@ -126,10 +133,7 @@ public with sharing class GoBridge {
 				parts.size() == 1) {
 				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
 				SObject sobj = sobt.newSObject();
-				for (String key : data.keySet()) {
-					sobj.put(key, data.get(key));
-				}
-
+				setFieldsWithTypeConversion(sobj, data, sobt);
 				insert sobj;
 				Map<String, Object> result = new Map<String, Object>{
 					'id' => (String)sobj.get('Id'),
@@ -145,10 +149,7 @@ public with sharing class GoBridge {
 				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
 				SObject sobj = sobt.newSObject();
 				sobj.put('Id', recId);
-				for (String key : data.keySet()) {
-					sobj.put(key, data.get(key));
-				}
-
+				setFieldsWithTypeConversion(sobj, data, sobt);
 				update sobj;
 				Map<String, Object> result = new Map<String, Object>{
 					'success' => true,
@@ -171,6 +172,447 @@ public with sharing class GoBridge {
 			}
 		}
 		throw new UnsupportedUrlException();
+	}
+
+	private static String handleCompositeRequest(String body) {
+		try {
+			Map<String, Object> compositeRequest = (Map<String, Object>)JSON.deserializeUntyped(body);
+			List<Object> subRequests = (List<Object>)compositeRequest.get('compositeRequest');
+			Boolean allOrNone = compositeRequest.get('allOrNone') != null ?
+				(Boolean)compositeRequest.get('allOrNone') :
+				false;
+			List<Map<String, Object>> results = new List<Map<String, Object>>();
+
+			if (allOrNone) {
+				return handleAllOrNoneCompositeRequest(subRequests);
+			} else {
+				return handleStandardCompositeRequest(subRequests);
+			}
+		} catch (Exception e) {
+			Map<String, Object> errorResponse = new Map<String, Object>{
+				'message' => 'Error processing composite request: ' + e.getMessage(),
+				'errorCode' => 'COMPOSITE_REQUEST_ERROR'
+			};
+			return JSON.serialize(errorResponse);
+		}
+	}
+
+	private static String handleStandardCompositeRequest(List<Object> subRequests) {
+		List<Map<String, Object>> results = new List<Map<String, Object>>();
+		Map<String, Map<String, Object>> referenceMap = new Map<String, Map<String, Object>>();
+
+		for (Object subRequestObj : subRequests) {
+			Map<String, Object> subRequest = (Map<String, Object>)subRequestObj;
+			String method = (String)subRequest.get('method');
+			String url = (String)subRequest.get('url');
+			String subBody = subRequest.get('body') != null ?
+				JSON.serialize(subRequest.get('body')) :
+				null;
+			String referenceId = (String)subRequest.get('referenceId');
+
+			// Resolve references in URL and body
+			url = resolveReferences(url, referenceMap);
+			if (subBody != null) {
+				subBody = resolveReferences(subBody, referenceMap);
+			}
+
+			Map<String, Object> subResult = new Map<String, Object>();
+			subResult.put('referenceId', referenceId);
+
+			try {
+				String response = processSubRequest(method, url, subBody);
+				subResult.put('httpStatusCode', 200);
+				Map<String, Object> responseBody = (Map<String, Object>)JSON.deserializeUntyped(response);
+				subResult.put('body', responseBody);
+
+				// Store successful response for future references
+				referenceMap.put(referenceId, responseBody);
+			} catch (Exception e) {
+				subResult.put('httpStatusCode', 400);
+				subResult.put('body', new Map<String, Object>{
+					'message' => e.getMessage(),
+					'errorCode' => 'COMPOSITE_SUB_REQUEST_ERROR'
+				});
+			}
+
+			results.add(subResult);
+		}
+
+		Map<String, Object> compositeResponse = new Map<String, Object>{ 'compositeResponse' => results };
+		return JSON.serialize(compositeResponse);
+	}
+
+	private static String handleAllOrNoneCompositeRequest(List<Object> subRequests) {
+		Savepoint sp = Database.setSavepoint();
+		List<Map<String, Object>> results = new List<Map<String, Object>>();
+		Map<String, Map<String, Object>> referenceMap = new Map<String, Map<String, Object>>();
+		Boolean hasError = false;
+
+		try {
+			for (Object subRequestObj : subRequests) {
+				Map<String, Object> subRequest = (Map<String, Object>)subRequestObj;
+				String method = (String)subRequest.get('method');
+				String url = (String)subRequest.get('url');
+				String subBody = subRequest.get('body') != null ?
+					JSON.serialize(subRequest.get('body')) :
+					null;
+				String referenceId = (String)subRequest.get('referenceId');
+
+				// Resolve references in URL and body
+				url = resolveReferences(url, referenceMap);
+				if (subBody != null) {
+					subBody = resolveReferences(subBody, referenceMap);
+				}
+
+				Map<String, Object> subResult = new Map<String, Object>();
+				subResult.put('referenceId', referenceId);
+
+				try {
+					String response = processSubRequest(method, url, subBody);
+					subResult.put('httpStatusCode', 200);
+					Map<String, Object> responseBody = (Map<String, Object>)JSON.deserializeUntyped(response);
+					subResult.put('body', responseBody);
+
+					// Store successful response for future references
+					referenceMap.put(referenceId, responseBody);
+				} catch (Exception e) {
+					hasError = true;
+					subResult.put('httpStatusCode', 400);
+					subResult.put('body', new Map<String, Object>{
+						'message' => e.getMessage(),
+						'errorCode' => 'COMPOSITE_SUB_REQUEST_ERROR'
+					});
+				}
+
+				results.add(subResult);
+
+				if (hasError) {
+					break;
+				}
+			}
+
+			if (hasError) {
+				Database.rollback(sp);
+				for (Map<String, Object> result : results) {
+					if ((Integer)result.get('httpStatusCode') == 200) {
+						result.put('httpStatusCode', 400);
+						result.put('body', new Map<String, Object>{
+							'message' => 'Transaction rolled back due to allOrNone=true',
+							'errorCode' => 'ALL_OR_NONE_OPERATION_ROLLED_BACK'
+						});
+					}
+				}
+			}
+
+			Map<String, Object> compositeResponse = new Map<String, Object>{ 'compositeResponse' => results };
+			return JSON.serialize(compositeResponse);
+		} catch (Exception e) {
+			Database.rollback(sp);
+			throw e;
+		}
+	}
+
+	private static String processSubRequest(String method, String url, String body) {
+		// Handle SOQL queries
+		if (method.equalsIgnoreCase('GET') &&
+			url.startsWith('/services/data/') &&
+			url.contains('/query')) {
+			String base = getBaseURL(url);
+			String qs = getQueryString(url);
+			String pathOnly = getPathOnly(url);
+
+			Integer start;
+			Database.Cursor cursor;
+
+			if (qs.startsWith('q=')) {
+				String soqlEnc = qs.substring(2);
+				String soql = EncodingUtil.urlDecode(soqlEnc, 'UTF-8');
+				start = 0;
+				cursor = Database.getCursor(soql);
+			} else {
+				start = getStart(url);
+				cursor = getCursor(url);
+			}
+
+			Integer totalSize = cursor.getNumRecords();
+			Integer remaining = totalSize - start;
+			Integer count = remaining < PAGE_SIZE ? remaining : PAGE_SIZE;
+			List<sObject> records = cursor.fetch(start, count);
+			Boolean done = (start + records.size() >= totalSize);
+
+			Map<String, Object> result = new Map<String, Object>{
+				'totalSize' => totalSize,
+				'done' => done,
+				'records' => records
+			};
+
+			if (!done) {
+				String locJson = JSON.serialize(cursor);
+				Map<String, Object> locMap = (Map<String, Object>)JSON.deserializeUntyped(locJson);
+				String locatorId = (String)locMap.get('queryId');
+				Integer nextStart = start + records.size();
+				String nextUrl = base + '/' +
+					EncodingUtil.urlEncode(locatorId + '-' + nextStart, 'UTF-8');
+				result.put('nextRecordsUrl', nextUrl);
+			}
+
+			return JSON.serialize(result);
+		}
+
+		// Handle sObject operations
+		String pathOnly = getPathOnly(url);
+		Integer soIdx = pathOnly.indexOf('/sobjects/');
+		if (url.startsWith('/services/data/') && soIdx >= 0) {
+			String rest = pathOnly.substring(soIdx + '/sobjects/'.length());
+			List<String> parts = rest.split('/');
+			String objectName = parts.size() > 0 ? parts[0] : null;
+			Schema.SObjectType sobt = objectName != null ?
+				Schema.getGlobalDescribe().get(objectName) :
+				null;
+			if (sobt == null) {
+				throw new UnsupportedUrlException();
+			}
+
+			// Create new sObject
+			if (method.equalsIgnoreCase('POST') &&
+				parts.size() == 1) {
+				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
+				SObject sobj = sobt.newSObject();
+				for (String key : data.keySet()) {
+					sobj.put(key, data.get(key));
+				}
+				insert sobj;
+				Map<String, Object> result = new Map<String, Object>{
+					'id' => (String)sobj.get('Id'),
+					'success' => true,
+					'errors' => new List<String>()
+				};
+				return JSON.serialize(result);
+			}
+
+			// Update existing sObject via PATCH
+			if (method.equalsIgnoreCase('PATCH') &&
+				parts.size() == 2) {
+				String recId = parts[1];
+				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
+				SObject sobj = sobt.newSObject();
+				sobj.put('Id', recId);
+				setFieldsWithTypeConversion(sobj, data, sobt);
+				update sobj;
+				Map<String, Object> result = new Map<String, Object>{
+					'success' => true,
+					'errors' => new List<String>()
+				};
+				return JSON.serialize(result);
+			}
+
+			// Delete existing sObject
+			if (method.equalsIgnoreCase('DELETE') &&
+				parts.size() == 2) {
+				String recId = parts[1];
+				SObject sobj = sobt.newSObject();
+				sobj.put('Id', recId);
+				delete sobj;
+				Map<String, Object> result = new Map<String, Object>{
+					'success' => true,
+					'errors' => new List<String>()
+				};
+				return JSON.serialize(result);
+			}
+		}
+
+		throw new UnsupportedUrlException();
+	}
+
+	private static void setFieldsWithTypeConversion(
+		SObject sobj,
+		Map<String, Object> data,
+		Schema.SObjectType sobjType
+	) {
+		// Get field describe info once for the entire object
+		Map<String, Schema.SObjectField> fieldMap = sobjType.getDescribe().fields.getMap();
+
+		for (String key : data.keySet()) {
+			setFieldWithTypeConversion(sobj, key, data.get(key), fieldMap);
+		}
+	}
+
+	private static void setFieldWithTypeConversion(
+		SObject sobj,
+		String fieldName,
+		Object value,
+		Map<String, Schema.SObjectField> fieldMap
+	) {
+		if (value == null) {
+			sobj.put(fieldName, null);
+			return;
+		}
+
+		// Get field describe info from the pre-fetched field map
+		Schema.SObjectField field = fieldMap.get(fieldName);
+
+		if (field == null) {
+			// Field doesn't exist, let Salesforce handle the error
+			sobj.put(fieldName, value);
+			return;
+		}
+
+		Schema.DisplayType fieldType = field.getDescribe().getType();
+
+		// Convert string dates to proper Date/DateTime objects
+		if (value instanceof String) {
+			String stringValue = (String)value;
+
+			try {
+				if (fieldType == Schema.DisplayType.Date) {
+					// Parse ISO date format: YYYY-MM-DD
+					if (Pattern.matches('\\d{4}-\\d{2}-\\d{2}', stringValue)) {
+						List<String> dateParts = stringValue.split('-');
+						Integer year = Integer.valueOf(dateParts[0]);
+						Integer month = Integer.valueOf(dateParts[1]);
+						Integer day = Integer.valueOf(dateParts[2]);
+						sobj.put(fieldName, Date.newInstance(year, month, day));
+						return;
+					}
+				} else if (fieldType == Schema.DisplayType.DateTime) {
+					// Parse ISO datetime format: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD HH:MM:SS
+					if (Pattern.matches('\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}.*', stringValue)) {
+						// Use JSON deserialization for datetime parsing as it handles ISO format well
+						String jsonWrapper = '{"dt":"' + stringValue + '"}';
+						Map<String, Object> wrapper = (Map<String, Object>)JSON.deserializeUntyped(jsonWrapper);
+						Object deserializedDt = wrapper.get('dt');
+						if (deserializedDt instanceof DateTime) {
+							sobj.put(fieldName, deserializedDt);
+							return;
+						}
+					}
+				}
+			} catch (Exception e) {
+			// If conversion fails, fall through to default assignment
+			}
+		}
+
+		// Default assignment for all other cases
+		sobj.put(fieldName, value);
+	}
+
+	@TestVisible
+	private static String resolveReferences(String input, Map<String, Map<String, Object>> referenceMap) {
+		if (input == null || !input.contains('@{')) {
+			return input;
+		}
+
+		String result = input;
+		Pattern refPattern = Pattern.compile('@\\{([^}]+)\\}');
+		Matcher matcher = refPattern.matcher(input);
+
+		while (matcher.find()) {
+			String fullMatch = matcher.group(0);
+			String referenceExpression = matcher.group(1);
+
+			Object resolvedValue = resolveReferenceExpression(referenceExpression, referenceMap);
+			String replacement = resolvedValue != null ? String.valueOf(resolvedValue) : 'null';
+			result = result.replace(fullMatch, replacement);
+		}
+
+		return result;
+	}
+
+	private static Object resolveReferenceExpression(
+		String expression,
+		Map<String, Map<String, Object>> referenceMap
+	) {
+		// Split by first dot to get referenceId and remaining path
+		Integer firstDot = expression.indexOf('.');
+		if (firstDot == -1) {
+			// No dot, just return the whole reference object
+			return referenceMap.get(expression);
+		}
+
+		String referenceId = expression.substring(0, firstDot);
+		String remainingPath = expression.substring(firstDot + 1);
+
+		if (!referenceMap.containsKey(referenceId)) {
+			return null;
+		}
+
+		Object currentObject = referenceMap.get(referenceId);
+		return resolveFieldPath(currentObject, remainingPath);
+	}
+
+	private static Object resolveFieldPath(Object currentObject, String fieldPath) {
+		if (currentObject == null || String.isEmpty(fieldPath)) {
+			return currentObject;
+		}
+
+		// Check for array indexing first
+		if (fieldPath.contains('[')) {
+			Integer bracketStart = fieldPath.indexOf('[');
+			Integer bracketEnd = fieldPath.indexOf(']');
+
+			if (bracketStart > 0 && bracketEnd > bracketStart) {
+				// Get field name before bracket
+				String fieldName = fieldPath.substring(0, bracketStart);
+				String indexStr = fieldPath.substring(bracketStart + 1, bracketEnd);
+				String remainingPath = bracketEnd + 1 < fieldPath.length() ?
+					fieldPath.substring(bracketEnd + 1) :
+					'';
+
+				// Remove leading dot from remaining path
+				if (remainingPath.startsWith('.')) {
+					remainingPath = remainingPath.substring(1);
+				}
+
+				// Navigate to the field first
+				Object fieldValue = getFieldValue(currentObject, fieldName);
+				if (!(fieldValue instanceof List<Object>)) {
+					return null;
+				}
+
+				// Get array index
+				List<Object> arrayValue = (List<Object>)fieldValue;
+				Integer index;
+				try {
+					index = Integer.valueOf(indexStr);
+				} catch (TypeException e) {
+					return null;
+				}
+
+				if (index < 0 || index >= arrayValue.size()) {
+					return null;
+				}
+
+				Object indexedValue = arrayValue[index];
+
+				// Continue with remaining path if any
+				if (String.isEmpty(remainingPath)) {
+					return indexedValue;
+				} else {
+					return resolveFieldPath(indexedValue, remainingPath);
+				}
+			}
+		}
+
+		// Handle simple field access
+		Integer nextDot = fieldPath.indexOf('.');
+		if (nextDot == -1) {
+			// Last field in path
+			return getFieldValue(currentObject, fieldPath);
+		} else {
+			// More fields to navigate
+			String fieldName = fieldPath.substring(0, nextDot);
+			String remainingPath = fieldPath.substring(nextDot + 1);
+			Object fieldValue = getFieldValue(currentObject, fieldName);
+			return resolveFieldPath(fieldValue, remainingPath);
+		}
+	}
+
+	private static Object getFieldValue(Object obj, String fieldName) {
+		if (obj instanceof Map<String, Object>) {
+			Map<String, Object> objMap = (Map<String, Object>)obj;
+			return objMap.get(fieldName);
+		}
+		return null;
 	}
 
 	class UnsupportedUrlException extends Exception {}

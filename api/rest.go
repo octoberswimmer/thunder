@@ -33,6 +33,7 @@ func Get(url string) ([]byte, error) {
 
 // Post performs a POST via JS proxy, automatically following Salesforce cursor pagination.
 // It returns an error if the underlying promise is rejected.
+// For composite requests, it returns CompositeErrors if any sub-requests fail.
 func Post(url string, body []byte) ([]byte, error) {
 	dataCh := make(chan []byte)
 	errCh := make(chan error)
@@ -47,6 +48,12 @@ func Post(url string, body []byte) ([]byte, error) {
 		}))
 	select {
 	case data := <-dataCh:
+		// Check if this is a composite request response
+		if isCompositeRequest(url, body) {
+			if compositeErrs, err := parseCompositeResponse(data); err == nil && compositeErrs.HasErrors() {
+				return data, compositeErrs
+			}
+		}
 		return data, nil
 	case err := <-errCh:
 		return nil, err

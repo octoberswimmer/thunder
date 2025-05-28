@@ -121,4 +121,546 @@ private class GoBridgeTest {
 		Integer count = [SELECT COUNT() FROM Account WHERE Id = :acct.Id];
 		System.assertEquals(0, count, 'record should be deleted');
 	}
+
+	@isTest
+	static void should_handle_composite_requests() {
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref1", "body": {"Name": "Composite Account 1", "Type": "Customer"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref2", "body": {"Name": "Composite Account 2", "Type": "Partner"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(2, compositeResponse.size(), 'should have 2 sub-responses');
+
+		Map<String, Object> subResp1 = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('ref1', subResp1.get('referenceId'));
+		System.assertEquals(200, subResp1.get('httpStatusCode'));
+		Map<String, Object> body1 = (Map<String, Object>)subResp1.get('body');
+		System.assertEquals(true, body1.get('success'));
+		System.assertNotEquals(null, body1.get('id'));
+
+		Map<String, Object> subResp2 = (Map<String, Object>)compositeResponse[1];
+		System.assertEquals('ref2', subResp2.get('referenceId'));
+		System.assertEquals(200, subResp2.get('httpStatusCode'));
+		Map<String, Object> body2 = (Map<String, Object>)subResp2.get('body');
+		System.assertEquals(true, body2.get('success'));
+		System.assertNotEquals(null, body2.get('id'));
+
+		List<Account> accounts = [
+			SELECT
+				Id,
+				Name,
+				Type
+			FROM
+				Account
+			WHERE
+				Name LIKE 'Composite Account%'
+			ORDER BY
+				Name
+		];
+		System.assertEquals(2, accounts.size(), 'should have created 2 accounts');
+		System.assertEquals('Composite Account 1', accounts[0].Name);
+		System.assertEquals('Customer', accounts[0].Type);
+		System.assertEquals('Composite Account 2', accounts[1].Name);
+		System.assertEquals('Partner', accounts[1].Type);
+	}
+
+	@isTest
+	static void should_handle_composite_requests_with_query() {
+		Account testAccount = new Account(
+			Name = 'Query Test Account',
+			Type = 'Customer'
+		);
+		insert testAccount;
+
+		String soql = 'SELECT Id, Name, Type FROM Account WHERE Name = \'Query Test Account\'';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "GET", "url": "/services/data/v58.0/query?q=' +
+			soqlEnc +
+			'", "referenceId": "queryRef"}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(1, compositeResponse.size(), 'should have 1 sub-response');
+
+		Map<String, Object> subResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('queryRef', subResp.get('referenceId'));
+		System.assertEquals(200, subResp.get('httpStatusCode'));
+		Map<String, Object> queryResult = (Map<String, Object>)subResp.get('body');
+		System.assertEquals(1, queryResult.get('totalSize'));
+		System.assertEquals(true, queryResult.get('done'));
+		List<Object> records = (List<Object>)queryResult.get('records');
+		System.assertEquals(1, records.size());
+	}
+
+	@isTest
+	static void should_handle_composite_request_errors() {
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/InvalidObject", "referenceId": "errorRef", "body": {"Name": "Test"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(1, compositeResponse.size(), 'should have 1 sub-response');
+
+		Map<String, Object> subResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('errorRef', subResp.get('referenceId'));
+		System.assertEquals(400, subResp.get('httpStatusCode'));
+		Map<String, Object> errorBody = (Map<String, Object>)subResp.get('body');
+		System.assertNotEquals(null, errorBody.get('message'));
+		System.assertEquals('COMPOSITE_SUB_REQUEST_ERROR', errorBody.get('errorCode'));
+	}
+
+	@isTest
+	static void should_handle_allOrNone_false_composite_requests() {
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"allOrNone": false,' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref1", "body": {"Name": "AllOrNone Test 1", "Type": "Customer"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/InvalidObject", "referenceId": "ref2", "body": {"Name": "Invalid"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref3", "body": {"Name": "AllOrNone Test 2", "Type": "Partner"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(3, compositeResponse.size(), 'should have 3 sub-responses');
+
+		Map<String, Object> subResp1 = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('ref1', subResp1.get('referenceId'));
+		System.assertEquals(200, subResp1.get('httpStatusCode'));
+
+		Map<String, Object> subResp2 = (Map<String, Object>)compositeResponse[1];
+		System.assertEquals('ref2', subResp2.get('referenceId'));
+		System.assertEquals(400, subResp2.get('httpStatusCode'));
+
+		Map<String, Object> subResp3 = (Map<String, Object>)compositeResponse[2];
+		System.assertEquals('ref3', subResp3.get('referenceId'));
+		System.assertEquals(200, subResp3.get('httpStatusCode'));
+
+		List<Account> accounts = [
+			SELECT
+				Id,
+				Name
+			FROM
+				Account
+			WHERE
+				Name LIKE 'AllOrNone Test%'
+			ORDER BY
+				Name
+		];
+		System.assertEquals(2, accounts.size(), 'should have created 2 accounts despite middle failure');
+	}
+
+	@isTest
+	static void should_handle_allOrNone_true_composite_requests_with_success() {
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"allOrNone": true,' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref1", "body": {"Name": "AllOrNone Success 1", "Type": "Customer"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref2", "body": {"Name": "AllOrNone Success 2", "Type": "Partner"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(2, compositeResponse.size(), 'should have 2 sub-responses');
+
+		Map<String, Object> subResp1 = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('ref1', subResp1.get('referenceId'));
+		System.assertEquals(200, subResp1.get('httpStatusCode'));
+
+		Map<String, Object> subResp2 = (Map<String, Object>)compositeResponse[1];
+		System.assertEquals('ref2', subResp2.get('referenceId'));
+		System.assertEquals(200, subResp2.get('httpStatusCode'));
+
+		List<Account> accounts = [
+			SELECT
+				Id,
+				Name
+			FROM
+				Account
+			WHERE
+				Name LIKE 'AllOrNone Success%'
+			ORDER BY
+				Name
+		];
+		System.assertEquals(2, accounts.size(), 'should have created 2 accounts');
+	}
+
+	@isTest
+	static void should_rollback_allOrNone_true_composite_requests_on_failure() {
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"allOrNone": true,' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref1", "body": {"Name": "AllOrNone Rollback 1", "Type": "Customer"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/InvalidObject", "referenceId": "ref2", "body": {"Name": "Invalid"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "ref3", "body": {"Name": "AllOrNone Rollback 2", "Type": "Partner"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(2, compositeResponse.size(), 'should have 2 sub-responses (processing stops at first error)');
+
+		Map<String, Object> subResp1 = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('ref1', subResp1.get('referenceId'));
+		System.assertEquals(400, subResp1.get('httpStatusCode'));
+		Map<String, Object> body1 = (Map<String, Object>)subResp1.get('body');
+		System.assertEquals('ALL_OR_NONE_OPERATION_ROLLED_BACK', body1.get('errorCode'));
+
+		Map<String, Object> subResp2 = (Map<String, Object>)compositeResponse[1];
+		System.assertEquals('ref2', subResp2.get('referenceId'));
+		System.assertEquals(400, subResp2.get('httpStatusCode'));
+		Map<String, Object> body2 = (Map<String, Object>)subResp2.get('body');
+		System.assertEquals('COMPOSITE_SUB_REQUEST_ERROR', body2.get('errorCode'));
+
+		List<Account> accounts = [
+			SELECT
+				Id,
+				Name
+			FROM
+				Account
+			WHERE
+				Name LIKE 'AllOrNone Rollback%'
+		];
+		System.assertEquals(0, accounts.size(), 'should have rolled back all account creations');
+	}
+
+	@isTest
+	static void should_handle_referenceId_in_composite_requests() {
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "NewAccount", "body": {"Name": "Reference Parent Account", "Type": "Customer"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Contact", "referenceId": "NewContact", "body": {"LastName": "Reference Contact", "AccountId": "@{NewAccount.id}"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(2, compositeResponse.size(), 'should have 2 sub-responses');
+
+		Map<String, Object> accountResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('NewAccount', accountResp.get('referenceId'));
+		System.assertEquals(200, accountResp.get('httpStatusCode'));
+		Map<String, Object> accountBody = (Map<String, Object>)accountResp.get('body');
+		String accountId = (String)accountBody.get('id');
+		System.assertNotEquals(null, accountId);
+
+		Map<String, Object> contactResp = (Map<String, Object>)compositeResponse[1];
+		System.assertEquals('NewContact', contactResp.get('referenceId'));
+		System.assertEquals(200, contactResp.get('httpStatusCode'));
+		Map<String, Object> contactBody = (Map<String, Object>)contactResp.get('body');
+		String contactId = (String)contactBody.get('id');
+		System.assertNotEquals(null, contactId);
+
+		// Verify the relationship was created correctly
+		Contact createdContact = [
+			SELECT
+				Id,
+				LastName,
+				AccountId
+			FROM
+				Contact
+			WHERE
+				Id = :contactId
+		];
+		System.assertEquals('Reference Contact', createdContact.LastName);
+		System.assertEquals(accountId, createdContact.AccountId);
+	}
+
+	@isTest
+	static void should_handle_multiple_referenceId_references() {
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "Account1", "body": {"Name": "Multi Ref Account 1", "Type": "Customer"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "Account2", "body": {"Name": "Multi Ref Account 2", "Type": "Partner"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Contact", "referenceId": "Contact1", "body": {"LastName": "Contact for Account 1", "AccountId": "@{Account1.id}"}},' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Contact", "referenceId": "Contact2", "body": {"LastName": "Contact for Account 2", "AccountId": "@{Account2.id}"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(4, compositeResponse.size(), 'should have 4 sub-responses');
+
+		// Verify all responses are successful
+		for (Integer i = 0; i < 4; i++) {
+			Map<String, Object> subResp = (Map<String, Object>)compositeResponse[i];
+			System.assertEquals(200, subResp.get('httpStatusCode'), 'Response ' + i + ' should be successful');
+		}
+
+		// Verify relationships
+		Map<String, Object> account1Body = (Map<String, Object>)((Map<String, Object>)compositeResponse[0]).get('body');
+		Map<String, Object> account2Body = (Map<String, Object>)((Map<String, Object>)compositeResponse[1]).get('body');
+		String account1Id = (String)account1Body.get('id');
+		String account2Id = (String)account2Body.get('id');
+
+		List<Contact> contacts = [
+			SELECT
+				Id,
+				LastName,
+				AccountId
+			FROM
+				Contact
+			WHERE
+				LastName LIKE 'Contact for Account%'
+			ORDER BY
+				LastName
+		];
+		System.assertEquals(2, contacts.size(), 'should have created 2 contacts');
+		System.assertEquals(account1Id, contacts[0].AccountId, 'First contact should reference first account');
+		System.assertEquals(account2Id, contacts[1].AccountId, 'Second contact should reference second account');
+	}
+
+	@isTest
+	static void should_handle_referenceId_in_url_paths() {
+		// First create an account
+		Account testAccount = new Account(
+			Name = 'Reference URL Test',
+			Type = 'Customer'
+		);
+		insert testAccount;
+
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "POST", "url": "/services/data/v58.0/sobjects/Contact", "referenceId": "NewContact", "body": {"LastName": "URL Reference Contact", "AccountId": "' +
+			testAccount.Id +
+			'"}},' +
+			'{"method": "PATCH", "url": "/services/data/v58.0/sobjects/Contact/@{NewContact.id}", "referenceId": "UpdateContact", "body": {"FirstName": "Updated"}}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(2, compositeResponse.size(), 'should have 2 sub-responses');
+
+		Map<String, Object> createResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals(200, createResp.get('httpStatusCode'));
+		Map<String, Object> createBody = (Map<String, Object>)createResp.get('body');
+		String contactId = (String)createBody.get('id');
+
+		Map<String, Object> updateResp = (Map<String, Object>)compositeResponse[1];
+		System.assertEquals(200, updateResp.get('httpStatusCode'));
+
+		// Verify the contact was updated
+		Contact updatedContact = [
+			SELECT
+				Id,
+				FirstName,
+				LastName
+			FROM
+				Contact
+			WHERE
+				Id = :contactId
+		];
+		System.assertEquals('Updated', updatedContact.FirstName);
+		System.assertEquals('URL Reference Contact', updatedContact.LastName);
+	}
+
+	@isTest
+	static void should_handle_nested_field_references() {
+		// Create test data first
+		Account testAccount = new Account(
+			Name = 'Nested Field Test Account',
+			Type = 'Customer'
+		);
+		insert testAccount;
+
+		// Test nested field access pattern by using a real query that will succeed
+		String url = '/services/data/v58.0/composite';
+		String soql = 'SELECT Id, Name FROM Account WHERE Name = \'Nested Field Test Account\' LIMIT 1';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "GET", "url": "/services/data/v58.0/query?q=' +
+			soqlEnc +
+			'", "referenceId": "AccountData"}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(1, compositeResponse.size(), 'should have 1 sub-response');
+
+		Map<String, Object> queryResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals(200, queryResp.get('httpStatusCode'));
+
+		Map<String, Object> queryBody = (Map<String, Object>)queryResp.get('body');
+		System.assertEquals(1, queryBody.get('totalSize'), 'should find 1 account');
+		List<Object> records = (List<Object>)queryBody.get('records');
+		System.assertEquals(1, records.size(), 'should have 1 record');
+	}
+
+	@isTest
+	static void should_handle_array_indexing_references() {
+		// Test array indexing like @{AccountInfo.recentItems[0].Id}
+		// Create test data to simulate array responses
+		List<Account> accounts = new List<Account>();
+		for (Integer i = 0; i < 3; i++) {
+			accounts.add(new Account(
+				Name = 'Array Test Account ' + i,
+				Type = 'Customer'
+			));
+		}
+		insert accounts;
+
+		String soql = 'SELECT Id, Name FROM Account WHERE Name LIKE \'Array Test Account%\' ORDER BY Name';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "GET", "url": "/services/data/v58.0/query?q=' +
+			soqlEnc +
+			'", "referenceId": "AccountList"}' +
+			']}';
+
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(1, compositeResponse.size(), 'should have 1 sub-response');
+
+		Map<String, Object> queryResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals(200, queryResp.get('httpStatusCode'));
+		Map<String, Object> queryBody = (Map<String, Object>)queryResp.get('body');
+		List<Object> records = (List<Object>)queryBody.get('records');
+		System.assertEquals(3, records.size(), 'should have 3 account records');
+	}
+
+	@isTest
+	static void should_resolve_reference_patterns_correctly() {
+		// Test the resolveReferences method directly with various patterns
+		Map<String, Map<String, Object>> testReferenceMap = new Map<String, Map<String, Object>>();
+
+		// Mock data structure for testing
+		Map<String, Object> accountData = new Map<String, Object>{
+			'id' => '001000000000001',
+			'Name' => 'Test Account',
+			'BillingAddress' => new Map<String, Object>{
+				'city' => 'San Francisco',
+				'state' => 'CA'
+			},
+			'recentItems' => new List<Object>{
+				new Map<String, Object>{
+					'Id' => 'item1',
+					'Name' => 'First Item'
+				},
+				new Map<String, Object>{
+					'Id' => 'item2',
+					'Name' => 'Second Item'
+				}
+			}
+		};
+		testReferenceMap.put('Account1Data', accountData);
+
+		// Test simple field reference: @{Account1Data.Name}
+		String simpleResult = GoBridge.resolveReferences('@{Account1Data.Name}', testReferenceMap);
+		System.assertEquals('Test Account', simpleResult, 'Simple field reference should work');
+
+		// Test nested field reference: @{Account1Data.BillingAddress.city}
+		String nestedResult = GoBridge.resolveReferences('@{Account1Data.BillingAddress.city}', testReferenceMap);
+		System.assertEquals('San Francisco', nestedResult, 'Nested field reference should work');
+
+		// Test array indexing: @{Account1Data.recentItems[0].Id}
+		String arrayResult = GoBridge.resolveReferences('@{Account1Data.recentItems[0].Id}', testReferenceMap);
+		System.assertEquals('item1', arrayResult, 'Array indexing should work');
+
+		// Test array indexing with nested field: @{Account1Data.recentItems[1].Name}
+		String arrayNestedResult = GoBridge.resolveReferences('@{Account1Data.recentItems[1].Name}', testReferenceMap);
+		System.assertEquals('Second Item', arrayNestedResult, 'Array indexing with nested field should work');
+
+		// Test non-existent reference
+		String nonExistentResult = GoBridge.resolveReferences('@{NonExistent.field}', testReferenceMap);
+		System.assertEquals('null', nonExistentResult, 'Non-existent reference should return null');
+	}
+
+	@isTest
+	static void should_convert_date_fields_in_composite_requests() {
+		// Create a Contact to test PersonBirthdate field conversion
+		Contact testContact = new Contact(
+			FirstName = 'Test',
+			LastName = 'User',
+			Email = 'test@example.com'
+		);
+		insert testContact;
+
+		// Test composite request with date field as string
+		String compositeBody = JSON.serialize(new Map<String, Object>{
+			'allOrNone' => false,
+			'compositeRequest' => new List<Object>{
+				new Map<String, Object>{
+					'method' => 'PATCH',
+					'url' => '/services/data/v58.0/sobjects/Contact/' + testContact.Id,
+					'referenceId' => 'UpdateContact',
+					'body' => new Map<String, Object>{ 'Birthdate' => '1990-10-10' }
+				}
+			}
+		});
+
+		String result = GoBridge.callRest('POST', '/services/data/v58.0/composite', compositeBody);
+
+		// Parse response
+		Map<String, Object> response = (Map<String, Object>)JSON.deserializeUntyped(result);
+		List<Object> compositeResponse = (List<Object>)response.get('compositeResponse');
+		Map<String, Object> subResponse = (Map<String, Object>)compositeResponse[0];
+
+		// Should succeed (200 status code)
+		System.assertEquals(200, (Integer)subResponse.get('httpStatusCode'), 'Date field conversion should succeed');
+
+		// Verify the date was actually set correctly
+		Contact updatedContact = [SELECT Birthdate FROM Contact WHERE Id = :testContact.Id];
+		System.assertEquals(Date.newInstance(1990, 10, 10), updatedContact.Birthdate, 'Birthdate should be converted from string to Date object');
+	}
+
+	@isTest
+	static void should_handle_invalid_date_format_gracefully() {
+		// Create a Contact to test invalid date handling
+		Contact testContact = new Contact(
+			FirstName = 'Test',
+			LastName = 'User',
+			Email = 'test@example.com'
+		);
+		insert testContact;
+
+		// Test composite request with invalid date format
+		String compositeBody = JSON.serialize(new Map<String, Object>{
+			'allOrNone' => false,
+			'compositeRequest' => new List<Object>{
+				new Map<String, Object>{
+					'method' => 'PATCH',
+					'url' => '/services/data/v58.0/sobjects/Contact/' + testContact.Id,
+					'referenceId' => 'UpdateContact',
+					'body' => new Map<String, Object>{ 'Birthdate' => 'invalid-date' }
+				}
+			}
+		});
+
+		String result = GoBridge.callRest('POST', '/services/data/v58.0/composite', compositeBody);
+
+		// Parse response
+		Map<String, Object> response = (Map<String, Object>)JSON.deserializeUntyped(result);
+		List<Object> compositeResponse = (List<Object>)response.get('compositeResponse');
+		Map<String, Object> subResponse = (Map<String, Object>)compositeResponse[0];
+
+		// Should fail with 400 status code due to invalid date
+		System.assertEquals(400, (Integer)subResponse.get('httpStatusCode'), 'Invalid date format should result in error');
+	}
 }

@@ -40,6 +40,7 @@ func Get(url string) ([]byte, error) {
 }
 
 // Post performs an HTTP POST against the local dev server and returns the response body.
+// For composite requests, it returns CompositeErrors if any sub-requests fail.
 func Post(url string, body []byte) ([]byte, error) {
 	fmt.Printf("POST %s %s\n", url, string(body))
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
@@ -60,6 +61,14 @@ func Post(url string, body []byte) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("POST %s returned status %d: %s", url, resp.StatusCode, string(data))
 	}
+
+	// Check if this is a composite request response
+	if isCompositeRequest(url, body) {
+		if compositeErrs, err := parseCompositeResponse(data); err == nil && compositeErrs.HasErrors() {
+			return data, compositeErrs
+		}
+	}
+
 	return data, nil
 }
 
