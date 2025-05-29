@@ -126,6 +126,8 @@ func RadioButtonGroup(name string, options []RadioButtonOption, selected string,
 					masc.Markup(
 						masc.Class("slds-radio_button__label"),
 						masc.Property("for", id),
+						masc.Style("user-select", "none"),
+						masc.Style("padding-bottom", "0.25rem"),
 					),
 					elem.Span(
 						masc.Markup(masc.Class("slds-radio_faux")),
