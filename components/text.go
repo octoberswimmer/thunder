@@ -67,3 +67,27 @@ func Heading(content string, size HeadingSize) masc.ComponentOrHTML {
 		)
 	}
 }
+
+// StaticField creates a read-only field that displays like a disabled input
+func StaticField(label, value string) masc.ComponentOrHTML {
+	return elem.Div(
+		masc.Markup(masc.Class("slds-form-element")),
+		elem.Label(
+			masc.Markup(masc.Class("slds-form-element__label")),
+			masc.Text(label),
+		),
+		elem.Div(
+			masc.Markup(masc.Class("slds-form-element__control")),
+			elem.Div(
+				masc.Markup(
+					masc.Class("slds-input"),
+					masc.Class("slds-is-disabled"),
+					masc.Style("background-color", "#f3f2f2"),
+					masc.Style("color", "#3e3e3c"),
+					masc.Style("border", "1px solid #d8dde6"),
+				),
+				masc.Text(value),
+			),
+		),
+	)
+}
