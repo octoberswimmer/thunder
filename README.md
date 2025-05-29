@@ -191,6 +191,7 @@ Thunder provides validated form components that handle error states, required fi
 - **`ValidatedTextInput`**: Text input with validation state
 - **`ValidatedTextarea`**: Multi-line text with validation
 - **`ValidatedSelect`**: Dropdown selection with validation
+- **`ValidatedRadioButtonGroup`**: Radio button group with validation state
 - **`ValidatedDatepicker`**: Date input with validation
 
 ### ValidationState
@@ -257,6 +258,28 @@ validationState := components.ValidationState{
 
 components.ValidatedTextInput("Email", m.email, validationState, func(e *masc.Event) {
     send(emailChangedMsg(e.Target.Get("value").String()))
+})
+```
+
+### Example: Radio Button Group with Validation
+```go
+// Gender selection with validation
+genderOptions := []components.RadioButtonOption{
+    {Label: "Female", Value: "Female"},
+    {Label: "Male", Value: "Male"},
+    {Label: "Other", Value: "Other"},
+    {Label: "Unknown", Value: "Unknown"},
+}
+
+validationState := components.ValidationState{
+    Required:     true,
+    HasError:     m.genderValidationError,
+    ErrorMessage: "Please select a gender",
+    HelpText:     "Gender as it appears on legal documents",
+}
+
+components.ValidatedRadioButtonGroup("Gender", "patient-gender", genderOptions, m.selectedGender, validationState, func(value string) {
+    send(genderChangedMsg(value))
 })
 ```
 
