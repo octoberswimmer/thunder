@@ -61,6 +61,7 @@ Thunder provides a comprehensive set of SLDS-styled components for building Ligh
 - **`Textarea`**: Multi-line text input for longer content (e.g., addresses, descriptions)
 - **`Select`**: Dropdown selection with picklist options
 - **`Datepicker`**: Date input with SLDS calendar styling
+- **`Timepicker`**: Time input with 24-hour format (HH:MM)
 - **`Checkbox`**: Boolean input with proper labeling
 - **`RadioGroup`**: Multiple choice selection with radio buttons in form layout
 - **`RadioButtonGroup`**: Multiple choice selection with button-style radio controls
@@ -193,6 +194,7 @@ Thunder provides validated form components that handle error states, required fi
 - **`ValidatedSelect`**: Dropdown selection with validation
 - **`ValidatedRadioButtonGroup`**: Radio button group with validation state
 - **`ValidatedDatepicker`**: Date input with validation
+- **`ValidatedTimepicker`**: Time input with validation (24-hour format)
 
 ### ValidationState
 All validated components use the `ValidationState` struct:
