@@ -62,7 +62,8 @@ Thunder provides a comprehensive set of SLDS-styled components for building Ligh
 - **`Select`**: Dropdown selection with picklist options
 - **`Datepicker`**: Date input with SLDS calendar styling
 - **`Checkbox`**: Boolean input with proper labeling
-- **`RadioGroup`**: Multiple choice selection with radio buttons
+- **`RadioGroup`**: Multiple choice selection with radio buttons in form layout
+- **`RadioButtonGroup`**: Multiple choice selection with button-style radio controls
 - **`ValidatedTextInput`**, **`ValidatedTextarea`**, etc.: Form components with built-in validation state management
 
 ### Layout Components  

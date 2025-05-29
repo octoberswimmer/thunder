@@ -23,7 +23,8 @@
 - [x] **Textarea** (`textarea.go`) - Multi-line text input
 - [x] **Checkbox** (`checkbox.go`) - Boolean input 
 - [x] **Select** (`select.go`) - Dropdown selection
-- [x] **RadioGroup** (`radiogroup.go`) - Single-choice options
+- [x] **RadioGroup** (`radiogroup.go`) - Single-choice options with form layout
+- [x] **RadioButtonGroup** (`radiogroup.go`) - Single-choice options with button styling
 - [x] **Datepicker** (`datepicker.go`) - Date selection
 - [x] **Lookup** (`lookup.go`) - Autocomplete/search input
 - [x] **Form Validation Framework** (`validated_input.go`) - Field-level validation with ValidationState

@@ -33,6 +33,9 @@ type CheckboxMsg struct{ Checked bool }
 // FilterModeMsg represents changing the filter mode (contains vs startsWith).
 type FilterModeMsg struct{ Mode string }
 
+// FilterStyleMsg represents changing the filter style (radio vs button group).
+type FilterStyleMsg struct{ Style string }
+
 // LastModifiedDateChangeMsg represents selecting a date to filter Accounts by LastModifiedDate.
 type LastModifiedDateChangeMsg struct{ Value string }
 
@@ -63,6 +66,7 @@ type AppModel struct {
 	Limit       string
 	FilterAOnly bool
 	FilterMode  string
+	FilterStyle string
 	SelectedTab string
 	// LastModifiedDate is the date filter for querying Accounts.
 	LastModifiedDate string
@@ -82,9 +86,10 @@ type AppModel struct {
 // Init returns no initial command.
 // Init sets default limit on startup.
 func (m *AppModel) Init() masc.Cmd {
-	// Default fetch limit, filter mode, and selected tab
+	// Default fetch limit, filter mode, filter style, and selected tab
 	m.Limit = "5"
 	m.FilterMode = "contains"
+	m.FilterStyle = "radio"
 	m.SelectedTab = "actions"
 	m.Loading = false
 	m.LastModifiedDate = ""
@@ -110,6 +115,10 @@ func (m *AppModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 	case FilterModeMsg:
 		// Update filter mode
 		m.FilterMode = msg.Mode
+		return m, nil
+	case FilterStyleMsg:
+		// Update filter style
+		m.FilterStyle = msg.Style
 		return m, nil
 	case LastModifiedDateChangeMsg:
 		// Update LastModifiedDate filter
@@ -242,20 +251,51 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 				),
 			),
 		)
+		// Style selector for radio components
 		data = append(data,
 			components.MarginTop(components.SpaceMedium,
-				components.RadioGroup(
-					"filtermode",
-					"Filter Mode",
-					[]components.RadioOption{
-						{Label: "Contains", Value: "contains"},
-						{Label: "Starts With", Value: "startswith"},
+				components.RadioButtonGroup(
+					"filterstyle",
+					[]components.RadioButtonOption{
+						{Label: "Radio", Value: "radio"},
+						{Label: "Button Group", Value: "buttongroup"},
 					},
-					m.FilterMode,
-					func(mode string) { send(FilterModeMsg{Mode: mode}) },
+					m.FilterStyle,
+					func(style string) { send(FilterStyleMsg{Style: style}) },
 				),
 			),
 		)
+		// Filter mode selector - show different component based on style
+		if m.FilterStyle == "radio" {
+			data = append(data,
+				components.MarginTop(components.SpaceMedium,
+					components.RadioGroup(
+						"filtermode",
+						"Filter Mode",
+						[]components.RadioOption{
+							{Label: "Contains", Value: "contains"},
+							{Label: "Starts With", Value: "startswith"},
+						},
+						m.FilterMode,
+						func(mode string) { send(FilterModeMsg{Mode: mode}) },
+					),
+				),
+			)
+		} else {
+			data = append(data,
+				components.MarginTop(components.SpaceMedium,
+					components.RadioButtonGroup(
+						"filtermode",
+						[]components.RadioButtonOption{
+							{Label: "Contains", Value: "contains"},
+							{Label: "Starts With", Value: "startswith"},
+						},
+						m.FilterMode,
+						func(mode string) { send(FilterModeMsg{Mode: mode}) },
+					),
+				),
+			)
+		}
 		data = append(data,
 			components.MarginTop(components.SpaceMedium,
 				components.TextInput("Filter by Name", m.InputValue, "Enter substring", func(e *masc.Event) {
@@ -338,7 +378,7 @@ func (m *AppModel) renderPageLayout(send func(masc.Msg)) masc.ComponentOrHTML {
 	)
 	header := components.PageHeader(
 		"Thunder Demo",
-		fmt.Sprintf("Mode: %s; Only A: %t", m.FilterMode, m.FilterAOnly),
+		fmt.Sprintf("Mode: %s; Style: %s; Only A: %t", m.FilterMode, m.FilterStyle, m.FilterAOnly),
 	)
 	card := components.Card("Accounts", tabs)
 	return components.Page(header, card)

@@ -76,3 +76,65 @@ func RadioGroup(name, legend string, options []RadioOption, selected string, onC
 	// Return the assembled group wrapped in a fieldset for proper semantics
 	return elem.FieldSet(args...)
 }
+
+// RadioButtonOption represents a single radio button choice for RadioButtonGroup.
+type RadioButtonOption struct {
+	Label string
+	Value string
+}
+
+// RadioButtonGroup renders an SLDS styled group of radio buttons using the radio button group pattern.
+// This follows the SLDS Radio Button Group component specification.
+// name is the shared name attribute for the radio inputs.
+// options is the slice of RadioButtonOption values.
+// selected is the currently selected option value.
+// onChange is called with the Value of the selected option when clicked.
+func RadioButtonGroup(name string, options []RadioButtonOption, selected string, onChange func(string)) masc.ComponentOrHTML {
+	var args []masc.MarkupOrChild
+	args = append(args,
+		masc.Markup(
+			masc.Class("slds-radio_button-group"),
+			masc.Property("role", "radiogroup"),
+		),
+	)
+
+	for _, opt := range options {
+		id := name + "-" + opt.Value
+		// Each radio button following SLDS radio button group pattern
+		args = append(args,
+			elem.Span(
+				masc.Markup(
+					masc.Class("slds-radio_button"),
+					event.Click(func(e *masc.Event) {
+						if onChange != nil {
+							onChange(opt.Value)
+						}
+					}),
+				),
+				// Actual radio input
+				elem.Input(
+					masc.Markup(
+						masc.Property("type", "radio"),
+						masc.Property("name", name),
+						masc.Property("value", opt.Value),
+						masc.Property("id", id),
+						masc.Property("checked", opt.Value == selected),
+					),
+				),
+				// Label for the radio button with styled faux element inside
+				elem.Label(
+					masc.Markup(
+						masc.Class("slds-radio_button__label"),
+						masc.Property("for", id),
+					),
+					elem.Span(
+						masc.Markup(masc.Class("slds-radio_faux")),
+						masc.Text(opt.Label),
+					),
+				),
+			),
+		)
+	}
+
+	return elem.Div(args...)
+}
