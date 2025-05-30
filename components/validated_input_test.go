@@ -1,8 +1,10 @@
 package components
 
 import (
-	"github.com/octoberswimmer/masc"
 	"testing"
+	"time"
+
+	"github.com/octoberswimmer/masc"
 )
 
 // TestValidatedTextInputBasic verifies basic ValidatedTextInput functionality.
@@ -346,7 +348,7 @@ func TestValidatedDatepickerBasic(t *testing.T) {
 		ErrorMessage: "",
 		HelpText:     "",
 	}
-	if comp := ValidatedDatepicker("Test Date", "2023-12-25", validation, nil); comp == nil {
+	if comp := ValidatedDatepicker("Test Date", time.Date(2023, 12, 25, 0, 0, 0, 0, time.UTC), validation, func(t time.Time) {}); comp == nil {
 		t.Error("ValidatedDatepicker returned nil for basic parameters")
 	}
 }
@@ -359,7 +361,7 @@ func TestValidatedDatepickerRequired(t *testing.T) {
 		ErrorMessage: "",
 		HelpText:     "Please select a date",
 	}
-	if comp := ValidatedDatepicker("Required Date", "", validation, nil); comp == nil {
+	if comp := ValidatedDatepicker("Required Date", time.Time{}, validation, func(t time.Time) {}); comp == nil {
 		t.Error("ValidatedDatepicker returned nil for required field")
 	}
 }
@@ -372,7 +374,49 @@ func TestValidatedDatepickerWithError(t *testing.T) {
 		ErrorMessage: "Date is required",
 		HelpText:     "Help text hidden when error present",
 	}
-	if comp := ValidatedDatepicker("Error Date", "", validation, nil); comp == nil {
+	if comp := ValidatedDatepicker("Error Date", time.Time{}, validation, func(t time.Time) {}); comp == nil {
 		t.Error("ValidatedDatepicker returned nil for error state")
+	}
+}
+
+// TestValidatedDatepickerWithValue verifies datepicker with specific date value.
+func TestValidatedDatepickerWithValue(t *testing.T) {
+	date := time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
+	validation := ValidationState{
+		HasError:     false,
+		Required:     false,
+		ErrorMessage: "",
+		HelpText:     "Select your preferred date",
+	}
+	if comp := ValidatedDatepicker("Appointment Date", date, validation, func(t time.Time) {}); comp == nil {
+		t.Error("ValidatedDatepicker returned nil with date value")
+	}
+}
+
+// TestValidatedDatepickerWithHandler verifies datepicker with event handler.
+func TestValidatedDatepickerWithHandler(t *testing.T) {
+	date := time.Date(2023, 3, 10, 0, 0, 0, 0, time.UTC)
+	validation := ValidationState{
+		HasError:     false,
+		Required:     true,
+		ErrorMessage: "",
+		HelpText:     "",
+	}
+	handler := func(t time.Time) {}
+	if comp := ValidatedDatepicker("Event Date", date, validation, handler); comp == nil {
+		t.Error("ValidatedDatepicker returned nil with event handler")
+	}
+}
+
+// TestValidatedDatepickerZeroValue verifies datepicker handles zero time value correctly.
+func TestValidatedDatepickerZeroValue(t *testing.T) {
+	validation := ValidationState{
+		HasError:     false,
+		Required:     false,
+		ErrorMessage: "",
+		HelpText:     "Optional date field",
+	}
+	if comp := ValidatedDatepicker("Optional Date", time.Time{}, validation, func(t time.Time) {}); comp == nil {
+		t.Error("ValidatedDatepicker returned nil with zero time value")
 	}
 }

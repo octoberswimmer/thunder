@@ -37,7 +37,7 @@ type FilterModeMsg struct{ Mode string }
 type FilterStyleMsg struct{ Style string }
 
 // LastModifiedDateChangeMsg represents selecting a date to filter Accounts by LastModifiedDate.
-type LastModifiedDateChangeMsg struct{ Value string }
+type LastModifiedDateChangeMsg struct{ Value time.Time }
 
 // ShowToastMsg represents clicking the show toast button.
 type ShowToastMsg struct{}
@@ -69,7 +69,7 @@ type AppModel struct {
 	FilterStyle string
 	SelectedTab string
 	// LastModifiedDate is the date filter for querying Accounts.
-	LastModifiedDate string
+	LastModifiedDate time.Time
 	// Data
 	Rows       []map[string]string
 	ObjectInfo *api.ObjectInfo
@@ -92,7 +92,7 @@ func (m *AppModel) Init() masc.Cmd {
 	m.FilterStyle = "radio"
 	m.SelectedTab = "actions"
 	m.Loading = false
-	m.LastModifiedDate = ""
+	m.LastModifiedDate = time.Time{}
 	return nil
 }
 
@@ -201,8 +201,8 @@ func (m *AppModel) renderActionsContent(send func(masc.Msg)) masc.ComponentOrHTM
 		components.Button("Show Toast", components.VariantNeutral, func(e *masc.Event) {
 			send(ShowToastMsg{})
 		}),
-		components.Datepicker("Modified Since", m.LastModifiedDate, func(e *masc.Event) {
-			send(LastModifiedDateChangeMsg{Value: e.Target.Get("value").String()})
+		components.Datepicker("Modified Since", m.LastModifiedDate, func(t time.Time) {
+			send(LastModifiedDateChangeMsg{Value: t})
 		}),
 		components.Badge("Demo Badge"),
 		components.Pill("Tag1", func(e *masc.Event) {
@@ -496,12 +496,8 @@ func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 	return func() masc.Msg {
 		// Build SOQL query with optional LastModifiedDate filter
 		var soql string
-		if m.LastModifiedDate != "" {
-			t, err := time.Parse("2006-01-02", m.LastModifiedDate)
-			if err != nil {
-				return QueryErrorMsg{Err: err.Error()}
-			}
-			dt := t.UTC().Format("2006-01-02T15:04:05Z")
+		if !m.LastModifiedDate.IsZero() {
+			dt := m.LastModifiedDate.UTC().Format("2006-01-02T15:04:05Z")
 			soql = fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account WHERE LastModifiedDate >= %s LIMIT %s", dt, limit)
 		} else {
 			soql = fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account LIMIT %s", limit)

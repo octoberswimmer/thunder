@@ -411,10 +411,15 @@ func ValidatedSelect(label string, options []SelectOption, selected string, vali
 
 // ValidatedDatepicker renders an SLDS styled date picker with validation support.
 // label is the form element label text.
-// value is the current date value in YYYY-MM-DD format.
+// value is the current date value as time.Time (zero value for empty).
 // validation contains error state, required flag, and messages.
 // onChange is the change event handler.
-func ValidatedDatepicker(label, value string, validation ValidationState, onChange func(*masc.Event)) masc.ComponentOrHTML {
+func ValidatedDatepicker(label string, value time.Time, validation ValidationState, onChange func(time.Time)) masc.ComponentOrHTML {
+	// Convert time.Time to string for HTML input
+	var valueStr string
+	if !value.IsZero() {
+		valueStr = value.Format("2006-01-02")
+	}
 	// Build form element classes
 	formClasses := []string{"slds-form-element", "slds-m-bottom_small"}
 	inputClasses := []string{"slds-input"}
@@ -449,9 +454,20 @@ func ValidatedDatepicker(label, value string, validation ValidationState, onChan
 				masc.Markup(
 					masc.Class(inputClasses...),
 					masc.Property("type", "date"),
-					masc.Property("value", value),
+					masc.Property("value", valueStr),
 					masc.Property("required", validation.Required),
-					event.Change(onChange),
+					event.Change(func(e *masc.Event) {
+						dateStr := e.Target.Get("value").String()
+						var newValue time.Time
+						if dateStr != "" {
+							if parsedDate, err := time.Parse("2006-01-02", dateStr); err == nil {
+								newValue = parsedDate
+							}
+							// If parse fails, newValue remains zero value
+						}
+						// Call onChange with parsed time.Time value
+						onChange(newValue)
+					}),
 				),
 			),
 		),
