@@ -344,7 +344,7 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 		}
 		data = append(data,
 			components.MarginTop(components.SpaceMedium,
-				components.DataTable([]string{"Name", "First Contact"}, filtered),
+				components.DataTable([]string{"Name"}, filtered),
 			),
 		)
 	} else {
@@ -498,9 +498,9 @@ func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 		var soql string
 		if !m.LastModifiedDate.IsZero() {
 			dt := m.LastModifiedDate.UTC().Format("2006-01-02T15:04:05Z")
-			soql = fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account WHERE LastModifiedDate >= %s LIMIT %s", dt, limit)
+			soql = fmt.Sprintf("SELECT Name FROM Account WHERE LastModifiedDate >= %s LIMIT %s", dt, limit)
 		} else {
-			soql = fmt.Sprintf("SELECT Name, (SELECT Name FROM Contacts ORDER BY CreatedDate Desc LIMIT 1) FROM Account LIMIT %s", limit)
+			soql = fmt.Sprintf("SELECT Name FROM Account LIMIT %s", limit)
 		}
 		data, err := api.Query(soql)
 		if err != nil {
@@ -512,8 +512,7 @@ func (m *AppModel) fetchAccountsCmd(limit string) masc.Cmd {
 			if err != nil {
 				return QueryErrorMsg{Err: err.Error()}
 			}
-			contactName, _ := r.StringValue("let c = Contacts | first(); c?.Name")
-			rows[i] = map[string]string{"Name": name, "First Contact": contactName}
+			rows[i] = map[string]string{"Name": name}
 		}
 		return AccountsFetchedMsg{Rows: rows}
 	}

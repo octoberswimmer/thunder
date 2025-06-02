@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/octoberswimmer/masc"
 )
@@ -10,10 +11,10 @@ import (
 func TestLastModifiedDateChangeMsg(t *testing.T) {
 	m := &AppModel{}
 	m.Init()
-	date := "2023-07-20"
+	date := time.Date(2023, 7, 20, 0, 0, 0, 0, time.UTC)
 	_, _ = m.Update(LastModifiedDateChangeMsg{Value: date})
 	if m.LastModifiedDate != date {
-		t.Errorf("expected LastModifiedDate %q; got %q", date, m.LastModifiedDate)
+		t.Errorf("expected LastModifiedDate %v; got %v", date, m.LastModifiedDate)
 	}
 }
 
