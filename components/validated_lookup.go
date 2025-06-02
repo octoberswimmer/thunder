@@ -27,12 +27,12 @@ func ValidatedLookup(label string,
 
 	// 1. Filter suggestions by input substring
 	var filtered []LookupOption
-	// Filter suggestions by input substring
+	// Filter suggestions by input substring, but exclude exact matches to close dropdown after select
 	q := strings.ToLower(strings.TrimSpace(value))
-	if q != "" && len(suggestions) > 0 {
+	if q != "" {
 		for _, opt := range suggestions {
 			lower := strings.ToLower(opt.Label)
-			if strings.Contains(lower, q) {
+			if lower != q && strings.Contains(lower, q) {
 				filtered = append(filtered, opt)
 			}
 		}
@@ -133,14 +133,26 @@ func ValidatedLookup(label string,
 		formElementClasses = append(formElementClasses, "slds-has-error")
 	}
 
+	// Build label with required indicator
+	labelContent := []masc.MarkupOrChild{masc.Text(label)}
+	if validation.Required {
+		labelContent = append(labelContent,
+			elem.Span(
+				masc.Markup(masc.Class("slds-required")),
+				masc.Text(" *"),
+			),
+		)
+	}
+
 	return elem.Div(
 		masc.Markup(masc.Class(formElementClasses...)),
 		elem.Div(
 			masc.Markup(masc.Class(wrapperClasses...)),
-			elem.Label(
-				masc.Markup(masc.Class("slds-form-element__label")),
-				masc.Text(label),
-			),
+			func() masc.ComponentOrHTML {
+				args := []masc.MarkupOrChild{masc.Markup(masc.Class("slds-form-element__label"))}
+				args = append(args, labelContent...)
+				return elem.Label(args...)
+			}(),
 			elem.Div(
 				masc.Markup(masc.Class("slds-form-element__control")),
 				// search input wrapper
