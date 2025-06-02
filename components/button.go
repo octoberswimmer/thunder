@@ -71,3 +71,61 @@ func LoadingButton(label string, variant ButtonVariant) masc.ComponentOrHTML {
 
 	return elem.Button(buttonContent...)
 }
+
+// DisabledButton creates a button with disabled state and proper styling.
+func DisabledButton(label string, variant ButtonVariant) masc.ComponentOrHTML {
+	v := string(variant)
+	if v == "" {
+		v = string(VariantNeutral)
+	}
+	return elem.Button(
+		masc.Markup(
+			masc.Class("slds-button", v),
+			masc.Attribute("disabled", "true"),
+		),
+		masc.Text(label),
+	)
+}
+
+// ButtonGroupSpaced creates a spaced group of buttons with proper SLDS spacing.
+func ButtonGroupSpaced(children ...masc.ComponentOrHTML) masc.ComponentOrHTML {
+	args := []masc.MarkupOrChild{
+		masc.Markup(masc.Class("slds-button-space")),
+	}
+	for _, child := range children {
+		args = append(args, child)
+	}
+	return elem.Div(args...)
+}
+
+// ActionButtons creates a group of action buttons with consistent spacing.
+// Typically used for Cancel/Previous/Next button groups.
+func ActionButtons(children ...masc.ComponentOrHTML) masc.ComponentOrHTML {
+	args := []masc.MarkupOrChild{
+		masc.Markup(masc.Class("slds-m-top_large", "slds-button-space")),
+	}
+	for _, child := range children {
+		args = append(args, child)
+	}
+	return elem.Div(args...)
+}
+
+// NavigationButtons creates the standard Cancel/Previous/Next button layout.
+func NavigationButtons(
+	onCancel func(*masc.Event),
+	onPrevious func(*masc.Event),
+	onNext func(*masc.Event),
+	showPrevious bool,
+) masc.ComponentOrHTML {
+	buttons := []masc.ComponentOrHTML{
+		Button("Cancel", VariantNeutral, onCancel),
+	}
+
+	if showPrevious {
+		buttons = append(buttons, Button("Previous", VariantNeutral, onPrevious))
+	}
+
+	buttons = append(buttons, Button("Next", VariantBrand, onNext))
+
+	return ActionButtons(buttons...)
+}

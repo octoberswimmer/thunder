@@ -68,6 +68,14 @@ func Heading(content string, size HeadingSize) masc.ComponentOrHTML {
 	}
 }
 
+// ErrorMessage creates a consistent error message display.
+func ErrorMessage(message string) masc.ComponentOrHTML {
+	return elem.Div(
+		masc.Markup(masc.Class("slds-text-color_error", "slds-text-heading_medium")),
+		masc.Text(message),
+	)
+}
+
 // StaticField creates a read-only field that displays like a disabled input
 func StaticField(label, value string) masc.ComponentOrHTML {
 	return elem.Div(
