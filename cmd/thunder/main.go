@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -486,8 +487,39 @@ func wasmExecHandler(w http.ResponseWriter, r *http.Request) {
 
 // indexHandler serves the indexHTML template directly.
 func indexHandler(w http.ResponseWriter, r *http.Request) {
+	// Only serve index for root path and paths that don't match other handlers
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(indexHTML))
+}
+
+// settingsHandler serves Thunder Settings from environment variables for dev mode.
+func settingsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Create settings response from environment variables
+	settings := map[string]interface{}{
+		"Google_Maps_API_Key__c": os.Getenv("GOOGLE_MAPS_API_KEY"),
+		"error":                  false,
+		"message":                "",
+	}
+
+	// If no API key is set, return an error
+	if settings["Google_Maps_API_Key__c"] == "" {
+		settings["error"] = true
+		settings["message"] = "GOOGLE_MAPS_API_KEY environment variable not set"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(settings); err != nil {
+		http.Error(w, "Failed to encode settings", http.StatusInternalServerError)
+	}
 }
 
 // runServe builds the WASM bundle and serves the app with auto-rebuild.
@@ -545,6 +577,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Set up HTTP handlers
 	http.HandleFunc("/services/", proxyHandler)
+	http.HandleFunc("/api/settings", settingsHandler)
 	http.HandleFunc("/bundle.wasm", wasmHandler)
 	http.HandleFunc("/wasm_exec.js", wasmExecHandler)
 	http.HandleFunc("/", indexHandler)
@@ -694,6 +727,16 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			files[t.dst] = data
 		}
 	}
+
+	// Custom Objects (Thunder Settings)
+	objectTemplates := []struct{ src, dst string }{
+		{"objects/Thunder_Settings__c.object", "objects/Thunder_Settings__c.object"},
+	}
+	for _, t := range objectTemplates {
+		if data, err := salesforce.SalesforceMetadataFS.ReadFile(t.src); err == nil {
+			files[t.dst] = data
+		}
+	}
 	// LWC components (runtime and wrapper)
 	for _, comp := range []string{"go", "thunder"} {
 		base := "lwc/" + comp
@@ -756,6 +799,10 @@ export default class %s extends Thunder {
     <members>GoBridge</members>
     <members>GoBridgeTest</members>
     <name>ApexClass</name>
+  </types>
+  <types>
+    <members>Thunder_Settings__c</members>
+    <name>CustomObject</name>
   </types>
   <types>
     <members>go</members>

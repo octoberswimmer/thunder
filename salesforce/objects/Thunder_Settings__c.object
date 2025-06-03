@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customSettingsType>Hierarchy</customSettingsType>
+    <description>Thunder framework configuration settings</description>
+    <enableFeeds>false</enableFeeds>
+    <label>Thunder Settings</label>
+    <visibility>Public</visibility>
+    <fields>
+        <fullName>Google_Maps_API_Key__c</fullName>
+        <description>API key for Google Maps Places API used in address autocomplete components</description>
+        <externalId>false</externalId>
+        <label>Google Maps API Key</label>
+        <length>255</length>
+        <required>false</required>
+        <trackTrending>false</trackTrending>
+        <type>Text</type>
+        <unique>false</unique>
+    </fields>
+</CustomObject>

@@ -59,6 +59,11 @@ public with sharing class GoBridge {
 
 	@AuraEnabled
 	public static String callRest(String method, String url, String body) {
+		// Handle Thunder Settings REST endpoint
+		if (url.startsWith('/services/apexrest/GoBridge/getThunderSettings')) {
+			return getThunderSettings();
+		}
+
 		// Handle Composite requests
 		if (method.equalsIgnoreCase('POST') &&
 			url.startsWith('/services/data/') &&
@@ -613,6 +618,35 @@ public with sharing class GoBridge {
 			return objMap.get(fieldName);
 		}
 		return null;
+	}
+
+	/**
+	 * Get Thunder Settings for the current user/org
+	 * Returns custom settings data as JSON string
+	 */
+	@AuraEnabled
+	public static String getThunderSettings() {
+		try {
+			Thunder_Settings__c settings = Thunder_Settings__c.getInstance();
+
+			Map<String, Object> result = new Map<String, Object>();
+
+			if (settings != null) {
+				result.put('Google_Maps_API_Key__c', settings.Google_Maps_API_Key__c);
+			} else {
+				// Return empty object if no settings configured
+				result.put('Google_Maps_API_Key__c', null);
+			}
+
+			return JSON.serialize(result);
+		} catch (Exception e) {
+			// Return error information
+			Map<String, Object> errorResult = new Map<String, Object>{
+				'error' => true,
+				'message' => 'Failed to retrieve Thunder Settings: ' + e.getMessage()
+			};
+			return JSON.serialize(errorResult);
+		}
 	}
 
 	class UnsupportedUrlException extends Exception {}

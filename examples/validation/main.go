@@ -18,6 +18,8 @@ type lastNameMsg string
 type emailMsg string
 type phoneMsg string
 type addressMsg string
+type settingsLoadedMsg struct{ settings *api.ThunderSettings }
+type settingsErrorMsg struct{ error string }
 type submitFormMsg struct{}
 type formSubmittedMsg struct{}
 type formErrorMsg struct{ error string }
@@ -39,6 +41,7 @@ type PatientFormModel struct {
 	addressApiError     string
 	addressJustSelected bool
 	googleApiKey        string
+	settingsLoading     bool
 
 	// Validation state
 	validationErrors map[string]string
@@ -54,9 +57,9 @@ type PatientFormModel struct {
 // Init initializes the model
 func (m *PatientFormModel) Init() masc.Cmd {
 	m.validationErrors = make(map[string]string)
-	// Set a demo Google API key - in real app this would come from config
-	m.googleApiKey = "DEMO_API_KEY"
-	return nil
+	m.settingsLoading = true
+	// Load Thunder Settings to get Google API key
+	return m.loadThunderSettingsCmd()
 }
 
 // Update handles form messages and validation
@@ -116,6 +119,22 @@ func (m *PatientFormModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		}
 		// Clear predictions if input is too short
 		m.addressPredictions = nil
+		return m, nil
+
+	case settingsLoadedMsg:
+		// Store the API key from settings and stop loading
+		m.settingsLoading = false
+		if msg.settings != nil {
+			m.googleApiKey = msg.settings.GoogleMapsAPIKey
+		}
+		return m, nil
+
+	case settingsErrorMsg:
+		// Show error if settings couldn't be loaded and stop loading
+		m.settingsLoading = false
+		m.showToast = true
+		m.toastVariant = components.VariantError
+		m.toastMessage = "Failed to load settings: " + msg.error
 		return m, nil
 
 	case components.AddressAutocompleteResult:
@@ -315,25 +334,32 @@ func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.Component
 					),
 				),
 
-				// Address - Required with Google Places autocomplete
+				// Address - Required with Google Places autocomplete or stencil while loading
 				components.GridColumn("1-of-1",
-					components.AddressAutocomplete(
-						"Address",
-						m.address,
-						m.googleApiKey,
-						m.addressPredictions,
-						m.addressApiError,
-						func(value string) {
-							send(addressMsg(value))
-						},
-						func(details api.PlaceDetails) {
-							// Store the selected address details
-							m.selectedAddress = &details
-							// Set flag to prevent autocomplete on next addressMsg
-							m.addressJustSelected = true
-							// Update the input field with the formatted address
-							send(addressMsg(details.FormattedAddress))
-						},
+					masc.If(m.settingsLoading,
+						// Show stencil while loading settings
+						components.Stencil("Address", "Loading address autocomplete..."),
+					),
+					masc.If(!m.settingsLoading,
+						// Show address autocomplete when settings are loaded
+						components.AddressAutocomplete(
+							"Address",
+							m.address,
+							m.googleApiKey,
+							m.addressPredictions,
+							m.addressApiError,
+							func(value string) {
+								send(addressMsg(value))
+							},
+							func(details api.PlaceDetails) {
+								// Store the selected address details
+								m.selectedAddress = &details
+								// Set flag to prevent autocomplete on next addressMsg
+								m.addressJustSelected = true
+								// Update the input field with the formatted address
+								send(addressMsg(details.FormattedAddress))
+							},
+						),
 					),
 					// Show validation error if present
 					masc.If(m.hasError("address"),
@@ -477,6 +503,17 @@ func (m *PatientFormModel) renderToast(send func(masc.Msg)) masc.ComponentOrHTML
 			m.showToast = false
 		},
 	)
+}
+
+// loadThunderSettingsCmd loads Thunder Settings asynchronously
+func (m *PatientFormModel) loadThunderSettingsCmd() masc.Cmd {
+	return func() masc.Msg {
+		settings, err := api.GetThunderSettings()
+		if err != nil {
+			return settingsErrorMsg{error: err.Error()}
+		}
+		return settingsLoadedMsg{settings: settings}
+	}
 }
 
 // submitFormCmd simulates form submission

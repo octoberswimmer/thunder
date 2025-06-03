@@ -663,4 +663,96 @@ private class GoBridgeTest {
 		// Should fail with 400 status code due to invalid date
 		System.assertEquals(400, (Integer)subResponse.get('httpStatusCode'), 'Invalid date format should result in error');
 	}
+
+	@isTest
+	static void get_thunder_settings_should_return_configured_settings() {
+		// Create test Thunder Settings
+		Thunder_Settings__c testSettings = new Thunder_Settings__c(
+			Google_Maps_API_Key__c = 'test-api-key-12345'
+		);
+		insert testSettings;
+
+		// Call getThunderSettings
+		String jsonResult = GoBridge.getThunderSettings();
+
+		// Parse and verify response
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResult);
+		System.assertEquals('test-api-key-12345', result.get('Google_Maps_API_Key__c'), 'Should return the configured API key');
+		System.assertEquals(null, result.get('error'), 'Should not have error field when successful');
+		System.assertEquals(null, result.get('message'), 'Should not have message field when successful');
+	}
+
+	@isTest
+	static void get_thunder_settings_should_handle_no_settings_configured() {
+		// Ensure no Thunder Settings exist
+		delete [SELECT Id FROM Thunder_Settings__c];
+
+		// Call getThunderSettings
+		String jsonResult = GoBridge.getThunderSettings();
+
+		// Parse and verify response
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResult);
+		System.assertEquals(null, result.get('Google_Maps_API_Key__c'), 'Should return null when no settings configured');
+		System.assertEquals(null, result.get('error'), 'Should not have error field when no settings exist');
+		System.assertEquals(null, result.get('message'), 'Should not have message field when no settings exist');
+	}
+
+	@isTest
+	static void get_thunder_settings_should_return_empty_api_key_when_not_set() {
+		// Create Thunder Settings with empty API key
+		Thunder_Settings__c testSettings = new Thunder_Settings__c(
+			Google_Maps_API_Key__c = null
+		);
+		insert testSettings;
+
+		// Call getThunderSettings
+		String jsonResult = GoBridge.getThunderSettings();
+
+		// Parse and verify response
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResult);
+		System.assertEquals(null, result.get('Google_Maps_API_Key__c'), 'Should return null for empty API key');
+		System.assertEquals(null, result.get('error'), 'Should not have error field when successful');
+	}
+
+	@isTest
+	static void get_thunder_settings_should_return_organization_level_settings() {
+		// Create organization-level Thunder Settings (hierarchy custom setting)
+		Thunder_Settings__c orgSettings = new Thunder_Settings__c(
+			Name = 'OrgDefaults',
+			Google_Maps_API_Key__c = 'org-level-api-key'
+		);
+		insert orgSettings;
+
+		// Create user-level settings with different value
+		Thunder_Settings__c userSettings = new Thunder_Settings__c(
+			SetupOwnerId = UserInfo.getUserId(),
+			Google_Maps_API_Key__c = 'user-level-api-key'
+		);
+		insert userSettings;
+
+		// Call getThunderSettings - should return user-level settings (higher priority)
+		String jsonResult = GoBridge.getThunderSettings();
+
+		// Parse and verify response
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResult);
+		System.assertEquals('user-level-api-key', result.get('Google_Maps_API_Key__c'), 'Should return user-level settings when both exist');
+	}
+
+	@isTest
+	static void get_thunder_settings_via_rest_endpoint_should_work() {
+		// Create test Thunder Settings
+		Thunder_Settings__c testSettings = new Thunder_Settings__c(
+			Google_Maps_API_Key__c = 'rest-endpoint-test-key'
+		);
+		insert testSettings;
+
+		// Call via REST endpoint (simulating how Go WASM will call it)
+		String url = '/services/apexrest/GoBridge/getThunderSettings';
+		String jsonResult = GoBridge.callRest('POST', url, null);
+
+		// Parse and verify response
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResult);
+		System.assertEquals('rest-endpoint-test-key', result.get('Google_Maps_API_Key__c'), 'REST endpoint should return settings');
+		System.assertEquals(null, result.get('error'), 'REST endpoint should not have error when successful');
+	}
 }
