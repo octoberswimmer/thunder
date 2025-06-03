@@ -7,6 +7,7 @@ import (
 
 	"github.com/octoberswimmer/masc"
 	"github.com/octoberswimmer/thunder"
+	"github.com/octoberswimmer/thunder/api"
 	"github.com/octoberswimmer/thunder/components"
 )
 
@@ -15,6 +16,7 @@ type firstNameMsg string
 type lastNameMsg string
 type emailMsg string
 type phoneMsg string
+type addressMsg string
 type submitFormMsg struct{}
 type formSubmittedMsg struct{}
 type formErrorMsg struct{ error string }
@@ -28,6 +30,12 @@ type PatientFormModel struct {
 	lastName  string
 	email     string
 	phone     string
+	address   string
+
+	// Address autocomplete state
+	addressPredictions []api.PlacePrediction
+	selectedAddress    *api.PlaceDetails
+	googleApiKey       string
 
 	// Validation state
 	validationErrors map[string]string
@@ -43,6 +51,8 @@ type PatientFormModel struct {
 // Init initializes the model
 func (m *PatientFormModel) Init() masc.Cmd {
 	m.validationErrors = make(map[string]string)
+	// Set a demo Google API key - in real app this would come from config
+	m.googleApiKey = "DEMO_API_KEY"
 	return nil
 }
 
@@ -81,6 +91,29 @@ func (m *PatientFormModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		}
 		return m, nil
 
+	case addressMsg:
+		m.address = string(msg)
+		// Clear error if address becomes valid
+		if strings.TrimSpace(m.address) != "" {
+			delete(m.validationErrors, "address")
+		}
+		// Fetch address predictions if we have enough input
+		if len(strings.TrimSpace(m.address)) >= 3 {
+			return m, components.AddressAutocompleteCmd(m.googleApiKey, m.address)
+		}
+		// Clear predictions if input is too short
+		m.addressPredictions = nil
+		return m, nil
+
+	case components.AddressAutocompleteResult:
+		if msg.Error != nil {
+			// Handle API error - in real app you might show an error message
+			m.addressPredictions = nil
+		} else {
+			m.addressPredictions = msg.Predictions
+		}
+		return m, nil
+
 	case submitFormMsg:
 		// Validate form before submission
 		m.formSubmitted = true
@@ -110,6 +143,9 @@ func (m *PatientFormModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		m.lastName = ""
 		m.email = ""
 		m.phone = ""
+		m.address = ""
+		m.addressPredictions = nil
+		m.selectedAddress = nil
 		m.formSubmitted = false
 		m.validationErrors = make(map[string]string)
 		return m, nil
@@ -149,6 +185,11 @@ func (m *PatientFormModel) validateForm() map[string]string {
 	// Optional phone validation
 	if m.phone != "" && !isValidPhone(m.phone) {
 		errors["phone"] = "Please enter a valid phone number (e.g., (555) 123-4567)"
+	}
+
+	// Required address validation
+	if strings.TrimSpace(m.address) == "" {
+		errors["address"] = "Address is required"
 	}
 
 	return errors
@@ -255,6 +296,31 @@ func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.Component
 						},
 					),
 				),
+
+				// Address - Required with Google Places autocomplete
+				components.GridColumn("1-of-1",
+					components.AddressAutocomplete(
+						"Address",
+						m.address,
+						m.googleApiKey,
+						m.addressPredictions,
+						func(value string) {
+							send(addressMsg(value))
+						},
+						func(details api.PlaceDetails) {
+							// Store the selected address details
+							m.selectedAddress = &details
+							// Update the input field with the formatted address
+							send(addressMsg(details.FormattedAddress))
+						},
+					),
+					// Show validation error if present
+					masc.If(m.hasError("address"),
+						components.ErrorMessage(m.validationErrors["address"]),
+					),
+					// Show selected address details if available
+					m.renderAddressDetails(),
+				),
 			),
 		),
 
@@ -326,6 +392,23 @@ func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.Component
 			),
 		),
 	)
+}
+
+// renderAddressDetails shows selected address information safely
+func (m *PatientFormModel) renderAddressDetails() masc.ComponentOrHTML {
+	if m.selectedAddress == nil {
+		return nil
+	}
+
+	details := m.selectedAddress
+	return masc.List{
+		components.Text("Selected address details:", components.TextSmall),
+		components.Text("Street: "+details.Street, components.TextSmall),
+		components.Text("City: "+details.City, components.TextSmall),
+		components.Text("State: "+details.State, components.TextSmall),
+		components.Text("Postal Code: "+details.PostalCode, components.TextSmall),
+		components.Text("Country: "+details.Country, components.TextSmall),
+	}
 }
 
 // renderToast shows success/error notifications
