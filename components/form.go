@@ -13,6 +13,14 @@ func Form(children ...masc.MarkupOrChild) masc.ComponentOrHTML {
 	return elem.Form(args...)
 }
 
+// FormWithAttributes renders an SLDS styled form container with custom attributes.
+// The first argument should be markup with attributes, followed by children.
+func FormWithAttributes(attributesAndChildren ...masc.MarkupOrChild) masc.ComponentOrHTML {
+	args := []masc.MarkupOrChild{masc.Markup(masc.Class("slds-form", "slds-form_stacked"))}
+	args = append(args, attributesAndChildren...)
+	return elem.Form(args...)
+}
+
 // FormSection renders a form section with a heading and grouped fields.
 // title is the section heading text.
 // children are the form fields within this section.

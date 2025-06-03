@@ -151,6 +151,20 @@ func DataTableWithMenu(columns []DataTableColumn, rows []map[string]interface{},
 
 // renderMenuCell renders a table cell with a proper dropdown menu for actions
 func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction func(string, map[string]interface{}), rowIndex int) masc.ComponentOrHTML {
+	// Check if this row is loading
+	isLoading := false
+	if loadingVal, ok := row["isLoading"].(bool); ok {
+		isLoading = loadingVal
+	}
+
+	// If loading, show spinner instead of menu
+	if isLoading {
+		return elem.TableData(
+			masc.Markup(masc.Class("slds-text-align_right")),
+			CenteredSpinner("small"),
+		)
+	}
+
 	if col.Actions == nil || len(col.Actions.Actions) == 0 {
 		return elem.TableData(
 			masc.Markup(masc.Class("slds-text-align_right")),
