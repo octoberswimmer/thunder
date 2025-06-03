@@ -31,8 +31,22 @@ type PlaceDetails struct {
 // GooglePlacesAutocompleteResponse represents Google's API response
 type GooglePlacesAutocompleteResponse struct {
 	Suggestions []struct {
-		PlacePrediction PlacePrediction `json:"placePrediction"`
+		PlacePrediction struct {
+			PlaceID string `json:"placeId"`
+			Text    struct {
+				Text string `json:"text"`
+			} `json:"text"`
+		} `json:"placePrediction"`
 	} `json:"suggestions"`
+}
+
+// GoogleErrorResponse represents Google API error response
+type GoogleErrorResponse struct {
+	Error struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	} `json:"error"`
 }
 
 // GooglePlaceDetailsResponse represents Google's place details API response
@@ -83,6 +97,11 @@ func GetPlacesAutocomplete(apiKey, input string) ([]PlacePrediction, error) {
 		return nil, fmt.Errorf("places autocomplete request failed: %w", err)
 	}
 
+	// Check for HTTP errors
+	if resp.StatusCode != http.StatusOK {
+		return nil, parseGoogleAPIError(resp.StatusCode, responseData)
+	}
+
 	var response GooglePlacesAutocompleteResponse
 	if err := json.Unmarshal(responseData, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
@@ -91,7 +110,10 @@ func GetPlacesAutocomplete(apiKey, input string) ([]PlacePrediction, error) {
 	// Extract predictions
 	var predictions []PlacePrediction
 	for _, suggestion := range response.Suggestions {
-		predictions = append(predictions, suggestion.PlacePrediction)
+		predictions = append(predictions, PlacePrediction{
+			PlaceID:     suggestion.PlacePrediction.PlaceID,
+			Description: suggestion.PlacePrediction.Text.Text,
+		})
 	}
 
 	return predictions, nil
@@ -117,6 +139,11 @@ func GetPlaceDetails(apiKey, placeID string) (*PlaceDetails, error) {
 	responseData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("place details request failed: %w", err)
+	}
+
+	// Check for HTTP errors
+	if resp.StatusCode != http.StatusOK {
+		return nil, parseGoogleAPIError(resp.StatusCode, responseData)
 	}
 
 	var response GooglePlaceDetailsResponse
@@ -157,4 +184,29 @@ func GetPlaceDetails(apiKey, placeID string) (*PlaceDetails, error) {
 	}
 
 	return details, nil
+}
+
+// parseGoogleAPIError parses Google API error responses and returns user-friendly errors
+func parseGoogleAPIError(statusCode int, responseData []byte) error {
+	// Try to parse Google API error response
+	var googleErr GoogleErrorResponse
+	if err := json.Unmarshal(responseData, &googleErr); err == nil && googleErr.Error.Message != "" {
+		return fmt.Errorf("Google Places API error (%d): %s", googleErr.Error.Code, googleErr.Error.Message)
+	}
+
+	// Fallback to generic HTTP status messages
+	switch statusCode {
+	case 400:
+		return fmt.Errorf("invalid request - please check your input")
+	case 401:
+		return fmt.Errorf("invalid API key - please check your Google Places API key")
+	case 403:
+		return fmt.Errorf("access denied - API key may not have Places API enabled or quota exceeded")
+	case 429:
+		return fmt.Errorf("too many requests - please try again in a moment")
+	case 500, 502, 503:
+		return fmt.Errorf("Google Places API is temporarily unavailable - please try again later")
+	default:
+		return fmt.Errorf("Google Places API request failed with status %d", statusCode)
+	}
 }

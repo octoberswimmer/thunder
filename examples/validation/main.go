@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -33,9 +34,11 @@ type PatientFormModel struct {
 	address   string
 
 	// Address autocomplete state
-	addressPredictions []api.PlacePrediction
-	selectedAddress    *api.PlaceDetails
-	googleApiKey       string
+	addressPredictions  []api.PlacePrediction
+	selectedAddress     *api.PlaceDetails
+	addressApiError     string
+	addressJustSelected bool
+	googleApiKey        string
 
 	// Validation state
 	validationErrors map[string]string
@@ -93,10 +96,20 @@ func (m *PatientFormModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 
 	case addressMsg:
 		m.address = string(msg)
-		// Clear error if address becomes valid
+		// Clear errors if address becomes valid
 		if strings.TrimSpace(m.address) != "" {
 			delete(m.validationErrors, "address")
 		}
+
+		// If address was just selected, don't trigger new autocomplete
+		if m.addressJustSelected {
+			m.addressJustSelected = false
+			m.addressPredictions = nil
+			return m, nil
+		}
+
+		// Clear API error when user starts typing
+		m.addressApiError = ""
 		// Fetch address predictions if we have enough input
 		if len(strings.TrimSpace(m.address)) >= 3 {
 			return m, components.AddressAutocompleteCmd(m.googleApiKey, m.address)
@@ -107,9 +120,12 @@ func (m *PatientFormModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 
 	case components.AddressAutocompleteResult:
 		if msg.Error != nil {
-			// Handle API error - in real app you might show an error message
+			// Handle API error with user-friendly message
 			m.addressPredictions = nil
+			m.addressApiError = msg.Error.Error()
 		} else {
+			// Clear any previous error and update predictions
+			m.addressApiError = ""
 			m.addressPredictions = msg.Predictions
 		}
 		return m, nil
@@ -146,6 +162,8 @@ func (m *PatientFormModel) Update(msg masc.Msg) (masc.Model, masc.Cmd) {
 		m.address = ""
 		m.addressPredictions = nil
 		m.selectedAddress = nil
+		m.addressApiError = ""
+		m.addressJustSelected = false
 		m.formSubmitted = false
 		m.validationErrors = make(map[string]string)
 		return m, nil
@@ -304,12 +322,15 @@ func (m *PatientFormModel) renderPatientForm(send func(masc.Msg)) masc.Component
 						m.address,
 						m.googleApiKey,
 						m.addressPredictions,
+						m.addressApiError,
 						func(value string) {
 							send(addressMsg(value))
 						},
 						func(details api.PlaceDetails) {
 							// Store the selected address details
 							m.selectedAddress = &details
+							// Set flag to prevent autocomplete on next addressMsg
+							m.addressJustSelected = true
 							// Update the input field with the formatted address
 							send(addressMsg(details.FormattedAddress))
 						},
@@ -401,14 +422,49 @@ func (m *PatientFormModel) renderAddressDetails() masc.ComponentOrHTML {
 	}
 
 	details := m.selectedAddress
-	return masc.List{
-		components.Text("Selected address details:", components.TextSmall),
-		components.Text("Street: "+details.Street, components.TextSmall),
-		components.Text("City: "+details.City, components.TextSmall),
-		components.Text("State: "+details.State, components.TextSmall),
-		components.Text("Postal Code: "+details.PostalCode, components.TextSmall),
-		components.Text("Country: "+details.Country, components.TextSmall),
-	}
+	return components.Card("Selected Address Details",
+		components.Grid(
+			// Street address
+			masc.If(details.Street != "",
+				components.GridColumn("1-of-1",
+					components.StaticField("Street", details.Street),
+				),
+			),
+			// City, State, ZIP on same row
+			masc.If(details.City != "" || details.State != "" || details.PostalCode != "",
+				components.GridColumn("1-of-3",
+					masc.If(details.City != "",
+						components.StaticField("City", details.City),
+					),
+				),
+				components.GridColumn("1-of-3",
+					masc.If(details.State != "",
+						components.StaticField("State", details.State),
+					),
+				),
+				components.GridColumn("1-of-3",
+					masc.If(details.PostalCode != "",
+						components.StaticField("Postal Code", details.PostalCode),
+					),
+				),
+			),
+			// Country
+			masc.If(details.Country != "",
+				components.GridColumn("1-of-1",
+					components.StaticField("Country", details.Country),
+				),
+			),
+			// Coordinates (if available)
+			masc.If(details.Latitude != 0 && details.Longitude != 0,
+				components.GridColumn("1-of-2",
+					components.StaticField("Latitude", fmt.Sprintf("%.6f", details.Latitude)),
+				),
+				components.GridColumn("1-of-2",
+					components.StaticField("Longitude", fmt.Sprintf("%.6f", details.Longitude)),
+				),
+			),
+		),
+	)
 }
 
 // renderToast shows success/error notifications

@@ -12,6 +12,7 @@ import (
 // value: current input text
 // apiKey: Google Maps API key
 // predictions: current list of address predictions
+// apiError: error message to display (if any)
 // onInput: called on input change
 // onSelect: called when an address is selected with full details
 func AddressAutocomplete(
@@ -19,6 +20,7 @@ func AddressAutocomplete(
 	value string,
 	apiKey string,
 	predictions []api.PlacePrediction,
+	apiError string,
 	onInput func(string),
 	onSelect func(api.PlaceDetails),
 ) masc.ComponentOrHTML {
@@ -104,6 +106,13 @@ func AddressAutocomplete(
 						masc.Markup(masc.Class("slds-lookup__list"), masc.Attribute("role", "listbox")),
 					}, items...)...,
 				),
+			),
+		),
+		// Show API error if present
+		masc.If(apiError != "",
+			elem.Div(
+				masc.Markup(masc.Class("slds-form-element__help", "slds-text-color_error")),
+				masc.Text(apiError),
 			),
 		),
 	)

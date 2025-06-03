@@ -8,7 +8,7 @@ import (
 
 // TestAddressAutocompleteBasic verifies that AddressAutocomplete renders for basic parameters.
 func TestAddressAutocompleteBasic(t *testing.T) {
-	comp := AddressAutocomplete("Home Address", "", "test-api-key", nil, nil, nil)
+	comp := AddressAutocomplete("Home Address", "", "test-api-key", nil, "", nil, nil)
 	if comp == nil {
 		t.Error("AddressAutocomplete returned nil for valid parameters")
 	}
@@ -16,7 +16,7 @@ func TestAddressAutocompleteBasic(t *testing.T) {
 
 // TestAddressAutocompleteWithValue verifies that AddressAutocomplete renders with a value.
 func TestAddressAutocompleteWithValue(t *testing.T) {
-	comp := AddressAutocomplete("Address", "123 Main St", "test-key", nil, nil, nil)
+	comp := AddressAutocomplete("Address", "123 Main St", "test-key", nil, "", nil, nil)
 	if comp == nil {
 		t.Error("AddressAutocomplete returned nil with value")
 	}
@@ -29,7 +29,7 @@ func TestAddressAutocompleteWithPredictions(t *testing.T) {
 		{PlaceID: "ChIJ456", Description: "456 Oak Ave, Another City, State"},
 	}
 
-	comp := AddressAutocomplete("Address", "", "test-key", predictions, nil, nil)
+	comp := AddressAutocomplete("Address", "", "test-key", predictions, "", nil, nil)
 	if comp == nil {
 		t.Error("AddressAutocomplete returned nil with predictions")
 	}
@@ -40,9 +40,17 @@ func TestAddressAutocompleteWithCallbacks(t *testing.T) {
 	onInput := func(s string) {}
 	onSelect := func(details api.PlaceDetails) {}
 
-	comp := AddressAutocomplete("Address", "", "test-key", nil, onInput, onSelect)
+	comp := AddressAutocomplete("Address", "", "test-key", nil, "", onInput, onSelect)
 	if comp == nil {
 		t.Error("AddressAutocomplete returned nil with callbacks")
+	}
+}
+
+// TestAddressAutocompleteWithError verifies that AddressAutocomplete renders with an error.
+func TestAddressAutocompleteWithError(t *testing.T) {
+	comp := AddressAutocomplete("Address", "", "test-key", nil, "API error occurred", nil, nil)
+	if comp == nil {
+		t.Error("AddressAutocomplete returned nil with error")
 	}
 }
 
