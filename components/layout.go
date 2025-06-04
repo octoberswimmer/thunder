@@ -148,15 +148,6 @@ func ButtonGroup(children ...masc.MarkupOrChild) masc.ComponentOrHTML {
 	return elem.Div(args...)
 }
 
-// ButtonList creates a spaced list of buttons for individual button placement.
-func ButtonList(children ...masc.MarkupOrChild) masc.ComponentOrHTML {
-	args := []masc.MarkupOrChild{
-		masc.Markup(masc.Class("slds-button-space")),
-	}
-	args = append(args, children...)
-	return elem.Div(args...)
-}
-
 // ButtonSpacer creates spacing between buttons in a button group.
 func ButtonSpacer() masc.ComponentOrHTML {
 	return Spacer(SpaceOptions{MarginLeft: SpaceSmall})
