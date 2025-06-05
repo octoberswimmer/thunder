@@ -383,9 +383,7 @@ public with sharing class GoBridge {
 				parts.size() == 1) {
 				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
 				SObject sobj = sobt.newSObject();
-				for (String key : data.keySet()) {
-					sobj.put(key, data.get(key));
-				}
+				setFieldsWithTypeConversion(sobj, data, sobt);
 				insert sobj;
 				Map<String, Object> result = new Map<String, Object>{
 					'id' => (String)sobj.get('Id'),
