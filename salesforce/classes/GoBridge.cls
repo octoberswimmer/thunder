@@ -59,124 +59,190 @@ public with sharing class GoBridge {
 
 	@AuraEnabled
 	public static String callRest(String method, String url, String body) {
-		// Handle Thunder Settings REST endpoint
+		// Dispatch to appropriate handler based on request type
 		if (url.startsWith('/services/apexrest/GoBridge/getThunderSettings')) {
-			return getThunderSettings();
-		}
-
-		// Handle Composite requests
-		if (method.equalsIgnoreCase('POST') &&
-			url.startsWith('/services/data/') &&
-			url.contains('/composite')) {
+			return handleThunderSettingsRequest();
+		} else if (isCompositeRequest(method, url)) {
 			return handleCompositeRequest(body);
+		} else if (isQueryRequest(method, url)) {
+			return handleQueryRequest(url);
+		} else if (isSObjectRequest(method, url)) {
+			return handleSObjectRequest(method, url, body);
+		} else {
+			throw new UnsupportedUrlException();
 		}
+	}
 
-		// Handle SOQL cursor pagination via REST-style query locator URLs
-		if (method.equalsIgnoreCase('GET') &&
+	/**
+	 * Check if this is a composite request
+	 */
+	@TestVisible
+	private static Boolean isCompositeRequest(String method, String url) {
+		return method.equalsIgnoreCase('POST') &&
 			url.startsWith('/services/data/') &&
-			url.contains('/query')) {
-			String base = getBaseURL(url);
-			String qs = getQueryString(url);
-			String pathOnly = getPathOnly(url);
+			url.contains('/composite');
+	}
 
-			Integer start;
-			DAtabase.Cursor cursor;
+	/**
+	 * Check if this is a query request
+	 */
+	@TestVisible
+	private static Boolean isQueryRequest(String method, String url) {
+		return method.equalsIgnoreCase('GET') &&
+			url.startsWith('/services/data/') &&
+			url.contains('/query');
+	}
 
-			if (qs.startsWith('q=')) {
-				// Initial page with q=<SOQL>
-				String soqlEnc = qs.substring(2);
-				String soql = EncodingUtil.urlDecode(soqlEnc, 'UTF-8');
+	/**
+	 * Check if this is an sObject request
+	 */
+	@TestVisible
+	private static Boolean isSObjectRequest(String method, String url) {
+		String pathOnly = getPathOnly(url);
+		return url.startsWith('/services/data/') && pathOnly.indexOf('/sobjects/') >= 0;
+	}
 
-				start = 0;
-				cursor = Database.getCursor(soql);
-			} else {
-				// Subsequent page via locator-offset
-				start = getStart(url);
-				cursor = getCursor(url);
-			}
+	/**
+	 * Handle Thunder Settings requests
+	 */
+	private static String handleThunderSettingsRequest() {
+		return getThunderSettings();
+	}
 
-			Integer totalSize = cursor.getNumRecords();
-			Integer remaining = totalSize - start;
-			Integer count = remaining < PAGE_SIZE ? remaining : PAGE_SIZE;
-			List<sObject> records = cursor.fetch(start, count);
-			Boolean done = (start + records.size() >= totalSize);
+	/**
+	 * Handle SOQL query requests with cursor pagination
+	 */
+	private static String handleQueryRequest(String url) {
+		String base = getBaseURL(url);
+		String qs = getQueryString(url);
+		String pathOnly = getPathOnly(url);
 
-			Map<String, Object> result = new Map<String, Object>{
-				'totalSize' => totalSize,
-				'done' => done,
-				'records' => records
-			};
+		Integer start;
+		Database.Cursor cursor;
 
-			if (!done) {
-				String locJson = JSON.serialize(cursor);
-				Map<String, Object> locMap = (Map<String, Object>)JSON.deserializeUntyped(locJson);
-				String locatorId = (String)locMap.get('queryId');
-				Integer nextStart = start + records.size();
-				String nextUrl = base + '/' +
-					EncodingUtil.urlEncode(locatorId + '-' + nextStart, 'UTF-8');
-				result.put('nextRecordsUrl', nextUrl);
-			}
+		if (qs.startsWith('q=')) {
+			// Initial page with q=<SOQL>
+			String soqlEnc = qs.substring(2);
+			String soql = EncodingUtil.urlDecode(soqlEnc, 'UTF-8');
 
-			return JSON.serialize(result);
+			start = 0;
+			cursor = Database.getCursor(soql);
+		} else {
+			// Subsequent page via locator-offset
+			start = getStart(url);
+			cursor = getCursor(url);
 		}
 
-		// Handle sObject create, update (PATCH), and delete via REST-style sobjects URLs
+		Integer totalSize = cursor.getNumRecords();
+		Integer remaining = totalSize - start;
+		Integer count = remaining < PAGE_SIZE ? remaining : PAGE_SIZE;
+		List<sObject> records = cursor.fetch(start, count);
+		Boolean done = (start + records.size() >= totalSize);
+
+		Map<String, Object> result = new Map<String, Object>{
+			'totalSize' => totalSize,
+			'done' => done,
+			'records' => records
+		};
+
+		if (!done) {
+			String locJson = JSON.serialize(cursor);
+			Map<String, Object> locMap = (Map<String, Object>)JSON.deserializeUntyped(locJson);
+			String locatorId = (String)locMap.get('queryId');
+			Integer nextStart = start + records.size();
+			String nextUrl = base + '/' +
+				EncodingUtil.urlEncode(locatorId + '-' + nextStart, 'UTF-8');
+			result.put('nextRecordsUrl', nextUrl);
+		}
+
+		return JSON.serialize(result);
+	}
+
+	/**
+	 * Handle sObject create, update (PATCH), and delete requests
+	 */
+	private static String handleSObjectRequest(String method, String url, String body) {
 		String pathOnly = getPathOnly(url);
 		Integer soIdx = pathOnly.indexOf('/sobjects/');
-		if (url.startsWith('/services/data/') && soIdx >= 0) {
-			String rest = pathOnly.substring(soIdx + '/sobjects/'.length());
-			List<String> parts = rest.split('/');
-			String objectName = parts.size() > 0 ? parts[0] : null;
-			Schema.SObjectType sobt = objectName != null ?
-				Schema.getGlobalDescribe().get(objectName) :
-				null;
-			if (sobt == null) {
-				throw new UnsupportedUrlException();
-			}
-			// Create new sObject
-			if (method.equalsIgnoreCase('POST') &&
-				parts.size() == 1) {
-				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
-				SObject sobj = sobt.newSObject();
-				setFieldsWithTypeConversion(sobj, data, sobt);
-				insert sobj;
-				Map<String, Object> result = new Map<String, Object>{
-					'id' => (String)sobj.get('Id'),
-					'success' => true,
-					'errors' => new List<String>()
-				};
-				return JSON.serialize(result);
-			}
-			// Update existing sObject via PATCH
-			if (method.equalsIgnoreCase('PATCH') &&
-				parts.size() == 2) {
-				String recId = parts[1];
-				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
-				SObject sobj = sobt.newSObject();
-				sobj.put('Id', recId);
-				setFieldsWithTypeConversion(sobj, data, sobt);
-				update sobj;
-				Map<String, Object> result = new Map<String, Object>{
-					'success' => true,
-					'errors' => new List<String>()
-				};
-				return JSON.serialize(result);
-			}
-			// Delete existing sObject
-			if (method.equalsIgnoreCase('DELETE') &&
-				parts.size() == 2) {
-				String recId = parts[1];
-				SObject sobj = sobt.newSObject();
-				sobj.put('Id', recId);
-				delete sobj;
-				Map<String, Object> result = new Map<String, Object>{
-					'success' => true,
-					'errors' => new List<String>()
-				};
-				return JSON.serialize(result);
-			}
+		String rest = pathOnly.substring(soIdx + '/sobjects/'.length());
+		List<String> parts = rest.split('/');
+		String objectName = parts.size() > 0 ? parts[0] : null;
+		Schema.SObjectType sobt = objectName != null ?
+			Schema.getGlobalDescribe().get(objectName) :
+			null;
+		if (sobt == null) {
+			throw new UnsupportedUrlException();
 		}
-		throw new UnsupportedUrlException();
+
+		// Create new sObject
+		if (method.equalsIgnoreCase('POST') &&
+			parts.size() == 1) {
+			return handleSObjectCreate(body, sobt);
+		}
+		// Update existing sObject via PATCH
+		else if (method.equalsIgnoreCase('PATCH') &&
+			parts.size() == 2) {
+			String recId = parts[1];
+			return handleSObjectUpdate(body, sobt, recId);
+		}
+		// Delete existing sObject
+		else if (method.equalsIgnoreCase('DELETE') &&
+			parts.size() == 2) {
+			String recId = parts[1];
+			return handleSObjectDelete(sobt, recId);
+		} else {
+			throw new UnsupportedUrlException();
+		}
+	}
+
+	/**
+	 * Handle sObject creation
+	 */
+	private static String handleSObjectCreate(String body, Schema.SObjectType sobt) {
+		Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
+		SObject sobj = sobt.newSObject();
+		setFieldsWithTypeConversion(sobj, data, sobt);
+		insert sobj;
+		Map<String, Object> result = new Map<String, Object>{
+			'id' => (String)sobj.get('Id'),
+			'success' => true,
+			'errors' => new List<String>()
+		};
+		return JSON.serialize(result);
+	}
+
+	/**
+	 * Handle sObject updates
+	 */
+	private static String handleSObjectUpdate(
+		String body,
+		Schema.SObjectType sobt,
+		String recId
+	) {
+		Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
+		SObject sobj = sobt.newSObject();
+		sobj.put('Id', recId);
+		setFieldsWithTypeConversion(sobj, data, sobt);
+		update sobj;
+		Map<String, Object> result = new Map<String, Object>{
+			'success' => true,
+			'errors' => new List<String>()
+		};
+		return JSON.serialize(result);
+	}
+
+	/**
+	 * Handle sObject deletion
+	 */
+	private static String handleSObjectDelete(Schema.SObjectType sobt, String recId) {
+		SObject sobj = sobt.newSObject();
+		sobj.put('Id', recId);
+		delete sobj;
+		Map<String, Object> result = new Map<String, Object>{
+			'success' => true,
+			'errors' => new List<String>()
+		};
+		return JSON.serialize(result);
 	}
 
 	private static String handleCompositeRequest(String body) {
@@ -318,113 +384,14 @@ public with sharing class GoBridge {
 	}
 
 	private static String processSubRequest(String method, String url, String body) {
-		// Handle SOQL queries
-		if (method.equalsIgnoreCase('GET') &&
-			url.startsWith('/services/data/') &&
-			url.contains('/query')) {
-			String base = getBaseURL(url);
-			String qs = getQueryString(url);
-			String pathOnly = getPathOnly(url);
-
-			Integer start;
-			Database.Cursor cursor;
-
-			if (qs.startsWith('q=')) {
-				String soqlEnc = qs.substring(2);
-				String soql = EncodingUtil.urlDecode(soqlEnc, 'UTF-8');
-				start = 0;
-				cursor = Database.getCursor(soql);
-			} else {
-				start = getStart(url);
-				cursor = getCursor(url);
-			}
-
-			Integer totalSize = cursor.getNumRecords();
-			Integer remaining = totalSize - start;
-			Integer count = remaining < PAGE_SIZE ? remaining : PAGE_SIZE;
-			List<sObject> records = cursor.fetch(start, count);
-			Boolean done = (start + records.size() >= totalSize);
-
-			Map<String, Object> result = new Map<String, Object>{
-				'totalSize' => totalSize,
-				'done' => done,
-				'records' => records
-			};
-
-			if (!done) {
-				String locJson = JSON.serialize(cursor);
-				Map<String, Object> locMap = (Map<String, Object>)JSON.deserializeUntyped(locJson);
-				String locatorId = (String)locMap.get('queryId');
-				Integer nextStart = start + records.size();
-				String nextUrl = base + '/' +
-					EncodingUtil.urlEncode(locatorId + '-' + nextStart, 'UTF-8');
-				result.put('nextRecordsUrl', nextUrl);
-			}
-
-			return JSON.serialize(result);
+		// Use the new specialized handlers for consistency
+		if (isQueryRequest(method, url)) {
+			return handleQueryRequest(url);
+		} else if (isSObjectRequest(method, url)) {
+			return handleSObjectRequest(method, url, body);
+		} else {
+			throw new UnsupportedUrlException();
 		}
-
-		// Handle sObject operations
-		String pathOnly = getPathOnly(url);
-		Integer soIdx = pathOnly.indexOf('/sobjects/');
-		if (url.startsWith('/services/data/') && soIdx >= 0) {
-			String rest = pathOnly.substring(soIdx + '/sobjects/'.length());
-			List<String> parts = rest.split('/');
-			String objectName = parts.size() > 0 ? parts[0] : null;
-			Schema.SObjectType sobt = objectName != null ?
-				Schema.getGlobalDescribe().get(objectName) :
-				null;
-			if (sobt == null) {
-				throw new UnsupportedUrlException();
-			}
-
-			// Create new sObject
-			if (method.equalsIgnoreCase('POST') &&
-				parts.size() == 1) {
-				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
-				SObject sobj = sobt.newSObject();
-				setFieldsWithTypeConversion(sobj, data, sobt);
-				insert sobj;
-				Map<String, Object> result = new Map<String, Object>{
-					'id' => (String)sobj.get('Id'),
-					'success' => true,
-					'errors' => new List<String>()
-				};
-				return JSON.serialize(result);
-			}
-
-			// Update existing sObject via PATCH
-			if (method.equalsIgnoreCase('PATCH') &&
-				parts.size() == 2) {
-				String recId = parts[1];
-				Map<String, Object> data = (Map<String, Object>)JSON.deserializeUntyped(body);
-				SObject sobj = sobt.newSObject();
-				sobj.put('Id', recId);
-				setFieldsWithTypeConversion(sobj, data, sobt);
-				update sobj;
-				Map<String, Object> result = new Map<String, Object>{
-					'success' => true,
-					'errors' => new List<String>()
-				};
-				return JSON.serialize(result);
-			}
-
-			// Delete existing sObject
-			if (method.equalsIgnoreCase('DELETE') &&
-				parts.size() == 2) {
-				String recId = parts[1];
-				SObject sobj = sobt.newSObject();
-				sobj.put('Id', recId);
-				delete sobj;
-				Map<String, Object> result = new Map<String, Object>{
-					'success' => true,
-					'errors' => new List<String>()
-				};
-				return JSON.serialize(result);
-			}
-		}
-
-		throw new UnsupportedUrlException();
 	}
 
 	private static void setFieldsWithTypeConversion(

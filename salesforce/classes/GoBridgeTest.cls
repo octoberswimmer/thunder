@@ -700,9 +700,7 @@ private class GoBridgeTest {
 	@isTest
 	static void get_thunder_settings_should_return_empty_api_key_when_not_set() {
 		// Create Thunder Settings with empty API key
-		Thunder_Settings__c testSettings = new Thunder_Settings__c(
-			Google_Maps_API_Key__c = null
-		);
+		Thunder_Settings__c testSettings = new Thunder_Settings__c(Google_Maps_API_Key__c = null);
 		insert testSettings;
 
 		// Call getThunderSettings
@@ -754,5 +752,196 @@ private class GoBridgeTest {
 		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResult);
 		System.assertEquals('rest-endpoint-test-key', result.get('Google_Maps_API_Key__c'), 'REST endpoint should return settings');
 		System.assertEquals(null, result.get('error'), 'REST endpoint should not have error when successful');
+	}
+
+	// Tests for refactored request type detection methods
+	@isTest
+	static void request_type_detection_should_work_correctly() {
+		// Test composite request detection
+		System.assertEquals(true, GoBridge.isCompositeRequest('POST', '/services/data/v58.0/composite'), 'Should detect composite requests');
+		System.assertEquals(false, GoBridge.isCompositeRequest('GET', '/services/data/v58.0/composite'), 'Should not detect GET as composite');
+		System.assertEquals(false, GoBridge.isCompositeRequest('POST', '/services/data/v58.0/query'), 'Should not detect query as composite');
+
+		// Test query request detection
+		System.assertEquals(true, GoBridge.isQueryRequest('GET', '/services/data/v58.0/query?q=SELECT Id FROM Account'), 'Should detect query requests');
+		System.assertEquals(false, GoBridge.isQueryRequest('POST', '/services/data/v58.0/query'), 'Should not detect POST as query');
+		System.assertEquals(false, GoBridge.isQueryRequest('GET', '/services/data/v58.0/sobjects/Account'), 'Should not detect sobject as query');
+
+		// Test sObject request detection
+		System.assertEquals(true, GoBridge.isSObjectRequest('POST', '/services/data/v58.0/sobjects/Account'), 'Should detect sObject POST');
+		System.assertEquals(true, GoBridge.isSObjectRequest('PATCH', '/services/data/v58.0/sobjects/Account/001000000000001'), 'Should detect sObject PATCH');
+		System.assertEquals(true, GoBridge.isSObjectRequest('DELETE', '/services/data/v58.0/sobjects/Account/001000000000001'), 'Should detect sObject DELETE');
+		System.assertEquals(false, GoBridge.isSObjectRequest('GET', '/services/data/v58.0/query'), 'Should not detect query as sObject');
+	}
+
+	@isTest
+	static void should_route_requests_to_correct_handlers() {
+		// Create test data
+		Account testAccount = new Account(
+			Name = 'Handler Test Account',
+			Type = 'Customer'
+		);
+		insert testAccount;
+
+		// Test that Thunder Settings requests are routed correctly
+		Thunder_Settings__c testSettings = new Thunder_Settings__c(
+			Google_Maps_API_Key__c = 'handler-test-key'
+		);
+		insert testSettings;
+
+		String settingsResult = GoBridge.callRest('POST', '/services/apexrest/GoBridge/getThunderSettings', null);
+		Map<String, Object> settingsData = (Map<String, Object>)JSON.deserializeUntyped(settingsResult);
+		System.assertEquals('handler-test-key', settingsData.get('Google_Maps_API_Key__c'), 'Thunder Settings handler should work');
+
+		// Test that query requests are routed correctly
+		String queryUrl = '/services/data/v58.0/query?q=' +
+			EncodingUtil.urlEncode('SELECT Id, Name FROM Account WHERE Name = \'Handler Test Account\'', 'UTF-8');
+		String queryResult = GoBridge.callRest('GET', queryUrl, null);
+		Map<String, Object> queryData = (Map<String, Object>)JSON.deserializeUntyped(queryResult);
+		System.assertEquals(1, (Integer)queryData.get('totalSize'), 'Query handler should work');
+
+		// Test that sObject requests are routed correctly
+		String createUrl = '/services/data/v58.0/sobjects/Account';
+		String createBody = '{"Name":"Handler Created Account","Type":"Partner"}';
+		String createResult = GoBridge.callRest('POST', createUrl, createBody);
+		Map<String, Object> createData = (Map<String, Object>)JSON.deserializeUntyped(createResult);
+		System.assertEquals(true, (Boolean)createData.get('success'), 'sObject create handler should work');
+
+		// Test that composite requests are routed correctly
+		String compositeUrl = '/services/data/v58.0/composite';
+		String compositeBody = '{"compositeRequest": [{"method": "POST", "url": "/services/data/v58.0/sobjects/Account", "referenceId": "TestRef", "body": {"Name": "Handler Composite Account", "Type": "Customer"}}]}';
+		String compositeResult = GoBridge.callRest('POST', compositeUrl, compositeBody);
+		Map<String, Object> compositeData = (Map<String, Object>)JSON.deserializeUntyped(compositeResult);
+		List<Object> compositeResponse = (List<Object>)compositeData.get('compositeResponse');
+		System.assertEquals(1, compositeResponse.size(), 'Composite handler should work');
+	}
+
+	@isTest
+	static void processSubRequest_should_use_specialized_handlers() {
+		// This test verifies that processSubRequest correctly delegates to the new handlers
+		// by testing composite requests that contain different sub-request types
+		Account testAccount = new Account(
+			Name = 'SubRequest Test Account',
+			Type = 'Customer'
+		);
+		insert testAccount;
+
+		// Create a composite request with both query and sObject operations
+		String soql = 'SELECT Id, Name FROM Account WHERE Name = \'SubRequest Test Account\'';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+
+		String compositeBody = JSON.serialize(new Map<String, Object>{
+			'allOrNone' => false,
+			'compositeRequest' => new List<Object>{
+				// Query operation (should use handleQueryRequest)
+				new Map<String, Object>{
+					'method' => 'GET',
+					'url' => '/services/data/v58.0/query?q=' + soqlEnc,
+					'referenceId' => 'QueryRef'
+				},
+				// sObject create operation (should use handleSObjectRequest)
+				new Map<String, Object>{
+					'method' => 'POST',
+					'url' => '/services/data/v58.0/sobjects/Account',
+					'referenceId' => 'CreateRef',
+					'body' => new Map<String, Object>{
+						'Name' => 'SubRequest Created Account',
+						'Type' => 'Partner'
+					}
+				},
+				// sObject update operation (should use handleSObjectRequest)
+				new Map<String, Object>{
+					'method' => 'PATCH',
+					'url' => '/services/data/v58.0/sobjects/Account/' + testAccount.Id,
+					'referenceId' => 'UpdateRef',
+					'body' => new Map<String, Object>{ 'Type' => 'Updated Type' }
+				}
+			}
+		});
+
+		String result = GoBridge.callRest('POST', '/services/data/v58.0/composite', compositeBody);
+		Map<String, Object> response = (Map<String, Object>)JSON.deserializeUntyped(result);
+		List<Object> compositeResponse = (List<Object>)response.get('compositeResponse');
+
+		System.assertEquals(3, compositeResponse.size(), 'Should have 3 sub-responses');
+
+		// Verify query sub-request worked
+		Map<String, Object> queryResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('QueryRef', queryResp.get('referenceId'));
+		System.assertEquals(200, queryResp.get('httpStatusCode'));
+		Map<String, Object> queryBody = (Map<String, Object>)queryResp.get('body');
+		System.assertEquals(1, (Integer)queryBody.get('totalSize'), 'Query sub-request should work via handleQueryRequest');
+
+		// Verify create sub-request worked
+		Map<String, Object> createResp = (Map<String, Object>)compositeResponse[1];
+		System.assertEquals('CreateRef', createResp.get('referenceId'));
+		System.assertEquals(200, createResp.get('httpStatusCode'));
+		Map<String, Object> createBody = (Map<String, Object>)createResp.get('body');
+		System.assertEquals(true, (Boolean)createBody.get('success'), 'Create sub-request should work via handleSObjectRequest');
+
+		// Verify update sub-request worked
+		Map<String, Object> updateResp = (Map<String, Object>)compositeResponse[2];
+		System.assertEquals('UpdateRef', updateResp.get('referenceId'));
+		System.assertEquals(200, updateResp.get('httpStatusCode'));
+		Map<String, Object> updateBody = (Map<String, Object>)updateResp.get('body');
+		System.assertEquals(true, (Boolean)updateBody.get('success'), 'Update sub-request should work via handleSObjectRequest');
+
+		// Verify the accounts were actually created/updated correctly
+		List<Account> accounts = [
+			SELECT
+				Id,
+				Name,
+				Type
+			FROM
+				Account
+			WHERE
+				Name IN ('SubRequest Test Account', 'SubRequest Created Account')
+			ORDER BY
+				Name
+		];
+		System.assertEquals(2, accounts.size(), 'Should have 2 accounts total');
+		// "SubRequest Created Account" comes first alphabetically, "SubRequest Test Account" comes second
+		System.assertEquals('Partner', accounts[0].Type, 'New account should be created');
+		System.assertEquals('Updated Type', accounts[1].Type, 'Original account should be updated');
+	}
+
+	@isTest
+	static void should_maintain_setFieldsWithTypeConversion_in_composite_subrequests() {
+		// This test verifies that the refactored processSubRequest still uses
+		// setFieldsWithTypeConversion for date field handling
+		Contact testContact = new Contact(
+			FirstName = 'SubRequest',
+			LastName = 'DateTest',
+			Email = 'subrequest@example.com'
+		);
+		insert testContact;
+
+		// Test composite request with date field conversion in sub-request
+		String compositeBody = JSON.serialize(new Map<String, Object>{
+			'allOrNone' => false,
+			'compositeRequest' => new List<Object>{
+				new Map<String, Object>{
+					'method' => 'PATCH',
+					'url' => '/services/data/v58.0/sobjects/Contact/' + testContact.Id,
+					'referenceId' => 'DateUpdateRef',
+					'body' => new Map<String, Object>{ 'Birthdate' => '1985-06-15' // String date should be converted
+					}
+				}
+			}
+		});
+
+		String result = GoBridge.callRest('POST', '/services/data/v58.0/composite', compositeBody);
+		Map<String, Object> response = (Map<String, Object>)JSON.deserializeUntyped(result);
+		List<Object> compositeResponse = (List<Object>)response.get('compositeResponse');
+
+		System.assertEquals(1, compositeResponse.size(), 'Should have 1 sub-response');
+
+		Map<String, Object> subResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('DateUpdateRef', subResp.get('referenceId'));
+		System.assertEquals(200, (Integer)subResp.get('httpStatusCode'), 'Date conversion should succeed in sub-request');
+
+		// Verify the date was correctly converted and stored
+		Contact updatedContact = [SELECT Birthdate FROM Contact WHERE Id = :testContact.Id];
+		System.assertEquals(Date.newInstance(1985, 6, 15), updatedContact.Birthdate, 'processSubRequest should use setFieldsWithTypeConversion for date conversion');
 	}
 }
