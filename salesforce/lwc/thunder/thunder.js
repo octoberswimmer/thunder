@@ -1,5 +1,7 @@
 import { LightningElement, wire, api } from 'lwc';
 import { setTabLabel, setTabIcon, IsConsoleNavigation, getFocusedTabInfo } from 'lightning/platformWorkspaceApi';
+import { NavigationMixin } from 'lightning/navigation';
+import { CloseActionScreenEvent } from 'lightning/actions';
 
 import { getPicklistValuesByRecordType } from './ui.js';
 
@@ -8,7 +10,7 @@ import Go from 'c/go';
 // Apex proxy for REST calls
 import callRest from '@salesforce/apex/GoBridge.callRest';
 
-export default class Thunder extends LightningElement {
+export default class Thunder extends NavigationMixin(LightningElement) {
 	@api set recordId(value) {
 		// Expose recordId from Lightning record page to Go WASM environment
 		globalThis.recordId = value;
@@ -67,6 +69,11 @@ export default class Thunder extends LightningElement {
 
 		globalThis.getPicklistValuesByRecordType = getPicklistValuesByRecordType;
 
+		// Expose Thunder exit functions to Go WASM
+		globalThis.thunderExit = () => this.exitApp();
+		globalThis.thunderExitToRecord = (recordId) => this.exitToRecord(recordId);
+		globalThis.thunderCloseModal = () => this.closeModal();
+
 		const resp = await fetch(this.app);
 		if (!resp.ok) {
 			const pre = document.createElement('pre');
@@ -80,5 +87,45 @@ export default class Thunder extends LightningElement {
 			await new Promise(resolve => setTimeout(resolve, 1000));
 			startWithDiv(divElement);
 		}
+	}
+
+	// Exit the Thunder app based on context
+	exitApp() {
+		if (this.isQuickAction()) {
+			this.closeModal();
+		} else {
+			this.exitToRecord(this.recordId);
+		}
+	}
+
+	// Navigate to a record's standard view page
+	exitToRecord(recordId) {
+		if (!recordId) {
+			recordId = this.recordId;
+		}
+
+		if (recordId) {
+			this[NavigationMixin.Navigate]({
+				type: 'standard__recordPage',
+				attributes: {
+					recordId: recordId,
+					actionName: 'view'
+				}
+			});
+		}
+	}
+
+	// Close modal if running in quick action context
+	closeModal() {
+		// Use CloseActionScreenEvent for quick actions
+		this.dispatchEvent(new CloseActionScreenEvent());
+	}
+
+	// Determine if running in a quick action context
+	isQuickAction() {
+		// Quick actions typically run in overlays or modals
+		// This heuristic checks for common quick action contexts
+		return window.location.pathname.includes('/one/one.app') &&
+			   (window.parent !== window || document.body.classList.contains('forceOverlay'));
 	}
 }
