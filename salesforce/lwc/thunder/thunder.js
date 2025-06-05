@@ -45,7 +45,22 @@ export default class Thunder extends LightningElement {
 		var divElement = this.template.querySelector('div');
 		// Expose REST methods to Go WASM
 		// get, post, patch, delete should call Apex @AuraEnabled proxy
-		globalThis.get = (url) => callRest({ method: 'GET', url, body: null });
+		globalThis.get = (url) => {
+			console.log('get called with ' + url);
+			return callRest({ method: 'GET', url, body: null, cachebust: Date.now() })
+				.then((res) => {
+					console.log('got response for ' + url);
+					console.log('type ' + typeof res);
+					console.log(res);
+					return res;
+				})
+				.catch((err) => {
+					console.log('got error for ' + url);
+					console.log('type ' + typeof err);
+					console.log(JSON.stringify(err));
+					throw err;
+				});
+		};
 		globalThis.post = (url, body) => callRest({ method: 'POST', url, body });
 		globalThis.patch = (url, body) => callRest({ method: 'PATCH', url, body });
 		globalThis.delete = (url) => callRest({ method: 'DELETE', url, body: null });

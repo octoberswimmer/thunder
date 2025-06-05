@@ -5,15 +5,24 @@ package api
 
 import (
 	"errors"
+	"log"
+	"sync"
 	"syscall/js"
+	"time"
 )
+
+// auraMutex serializes all Aura-enabled calls to prevent Lightning XHR connection issues
+var auraMutex sync.Mutex
 
 // GetPicklistValuesByRecordType fetches picklist values for the given object and record type.
 // It delegates to the global JavaScript getPicklistValuesByRecordType function.
 // Returns a map of field names to PicklistFieldValue or an error.
+// Aura calls are serialized to prevent Lightning XHR connection pool issues.
 func GetPicklistValuesByRecordType(objectName, recordTypeId string) (map[string]PicklistFieldValue, error) {
-	dataCh := make(chan []byte)
-	errCh := make(chan error)
+	auraMutex.Lock()
+
+	dataCh := make(chan []byte, 1) // Buffered channel to prevent blocking
+	errCh := make(chan error, 1)   // Buffered channel to prevent blocking
 	config := map[string]interface{}{
 		"objectApiName": objectName,
 		"recordTypeId":  recordTypeId,
@@ -32,20 +41,32 @@ func GetPicklistValuesByRecordType(objectName, recordTypeId string) (map[string]
 		errCh <- errors.New("getPicklistValuesByRecordType returned no data")
 		return nil
 	}))
-	select {
-	case data := <-dataCh:
-		return UnmarshalPicklistFieldValues(data)
-	case err := <-errCh:
-		return nil, err
+
+	// Release mutex after setting up the callback but before waiting
+	auraMutex.Unlock()
+
+	for {
+		select {
+		case data := <-dataCh:
+			return UnmarshalPicklistFieldValues(data)
+		case err := <-errCh:
+			return nil, err
+		case <-time.After(2 * time.Second):
+			log.Printf("Still waiting for GetPicklistValuesByRecordType %s %s response, continuing...", objectName, recordTypeId)
+			continue
+		}
 	}
 }
 
 // GetObjectInfo fetches SObject metadata for the given object.
 // It delegates to the global JavaScript getObjectInfo function.
 // Returns an ObjectInfo struct or an error if the JS API returns an error.
+// Aura calls are serialized to prevent Lightning XHR connection pool issues.
 func GetObjectInfo(objectName string) (ObjectInfo, error) {
-	dataCh := make(chan []byte)
-	errCh := make(chan error)
+	auraMutex.Lock()
+
+	dataCh := make(chan []byte, 1) // Buffered channel to prevent blocking
+	errCh := make(chan error, 1)   // Buffered channel to prevent blocking
 	config := map[string]interface{}{
 		"objectApiName": objectName,
 	}
@@ -63,10 +84,19 @@ func GetObjectInfo(objectName string) (ObjectInfo, error) {
 		errCh <- errors.New("getObjectInfo returned no data")
 		return nil
 	}))
-	select {
-	case data := <-dataCh:
-		return UnmarshalObjectInfo(data)
-	case err := <-errCh:
-		return ObjectInfo{}, err
+
+	// Release mutex after setting up the callback but before waiting
+	auraMutex.Unlock()
+
+	for {
+		select {
+		case data := <-dataCh:
+			return UnmarshalObjectInfo(data)
+		case err := <-errCh:
+			return ObjectInfo{}, err
+		case <-time.After(2 * time.Second):
+			log.Printf("Still waiting for GetObjectInfo %s response, continuing...", objectName)
+			continue
+		}
 	}
 }
