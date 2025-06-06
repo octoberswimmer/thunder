@@ -337,3 +337,14 @@ func LoadingTable() masc.ComponentOrHTML {
 		),
 	)
 }
+
+// ScrollableDataTableWithMenu wraps a DataTableWithMenu in a horizontally scrollable container.
+// This prevents table overflow issues while keeping actions accessible.
+func ScrollableDataTableWithMenu(columns []DataTableColumn, rows []map[string]interface{}, onRowAction func(string, map[string]interface{})) masc.ComponentOrHTML {
+	return elem.Div(
+		masc.Markup(
+			masc.Class("slds-scrollable_x"),
+		),
+		DataTableWithMenu(columns, rows, onRowAction),
+	)
+}

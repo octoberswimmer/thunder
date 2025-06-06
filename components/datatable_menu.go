@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/octoberswimmer/masc"
 	"github.com/octoberswimmer/masc/elem"
 	"github.com/octoberswimmer/masc/event"
@@ -218,14 +220,10 @@ func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction
 							if onRowAction != nil {
 								onRowAction(actionName, row)
 							}
+							// Close the dropdown after selecting an action via JavaScript
+							e.Target.Call("closest", ".slds-dropdown").Get("previousElementSibling").Call("setAttribute", "aria-expanded", "false")
+							e.Target.Call("closest", ".slds-dropdown").Get("style").Set("display", "none")
 						}),
-						masc.Attribute("onclick", `
-							// Close the dropdown after selecting an action
-							var dropdown = this.closest('.slds-dropdown');
-							var trigger = dropdown.previousElementSibling;
-							trigger.setAttribute('aria-expanded', 'false');
-							dropdown.style.display = 'none';
-						`),
 					),
 					elem.Span(
 						masc.Markup(masc.Class("slds-truncate")),
@@ -254,43 +252,31 @@ func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction
 					masc.Attribute("aria-haspopup", "true"),
 					masc.Attribute("aria-expanded", "false"),
 					masc.Attribute("title", "Show Actions"),
-					// Enhanced JavaScript to toggle dropdown visibility with outside click handling
-					masc.Attribute("onclick", `
-						var button = this;
-						var dropdown = this.nextElementSibling;
-						var isOpen = button.getAttribute('aria-expanded') === 'true';
-						
-						// Close all other dropdowns first
-						document.querySelectorAll('[aria-expanded="true"]').forEach(function(btn) {
-							if (btn !== button) {
-								btn.setAttribute('aria-expanded', 'false');
-								btn.nextElementSibling.style.display = 'none';
-							}
-						});
-						
+					// Simple dropdown toggle
+					event.Click(func(e *masc.Event) {
+						button := e.Target
+						dropdown := button.Get("nextElementSibling")
+						if dropdown.IsNull() {
+							return
+						}
+						isOpen := button.Call("getAttribute", "aria-expanded").String() == "true"
+
 						// Toggle this dropdown
-						if (isOpen) {
-							button.setAttribute('aria-expanded', 'false');
-							dropdown.style.display = 'none';
+						if isOpen {
+							button.Call("setAttribute", "aria-expanded", "false")
+							dropdown.Get("style").Set("display", "none")
 						} else {
-							button.setAttribute('aria-expanded', 'true');
-							dropdown.style.display = 'block';
+							// Position dropdown relative to button for fixed positioning
+							rect := button.Call("getBoundingClientRect")
+							top := rect.Get("bottom").Float() + 2   // 2px below button
+							left := rect.Get("right").Float() - 100 // Align right edge, assuming ~100px dropdown width
+
+							button.Call("setAttribute", "aria-expanded", "true")
+							dropdown.Get("style").Set("display", "block")
+							dropdown.Get("style").Set("top", fmt.Sprintf("%.0fpx", top))
+							dropdown.Get("style").Set("left", fmt.Sprintf("%.0fpx", left))
 						}
-						
-						// Close dropdown when clicking outside
-						if (!isOpen) {
-							setTimeout(function() {
-								function closeDropdown(event) {
-									if (!button.contains(event.target) && !dropdown.contains(event.target)) {
-										button.setAttribute('aria-expanded', 'false');
-										dropdown.style.display = 'none';
-										document.removeEventListener('click', closeDropdown);
-									}
-								}
-								document.addEventListener('click', closeDropdown);
-							}, 0);
-						}
-					`),
+					}),
 				),
 				masc.Text("⋯"),
 				elem.Span(
@@ -305,8 +291,8 @@ func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction
 					masc.Property("role", "menu"),
 					masc.Attribute("aria-labelledby", dropdownId),
 					masc.Style("display", "none"), // Initially hidden
-					masc.Style("position", "absolute"),
-					masc.Style("z-index", "7000"),
+					masc.Style("position", "fixed"),
+					masc.Style("z-index", "9999"),
 					masc.Style("min-width", "6rem"),
 				),
 				elem.UnorderedList(
