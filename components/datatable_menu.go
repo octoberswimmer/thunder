@@ -22,6 +22,7 @@ type DataTableColumn struct {
 	Label     string
 	FieldName string
 	Type      string
+	Width     string        // CSS width value (e.g. "150px", "10%")
 	Actions   *ActionColumn // Only set for action columns
 }
 
@@ -57,11 +58,15 @@ func DataTableWithMenu(columns []DataTableColumn, rows []map[string]interface{},
 				),
 			)
 		} else {
+			var headerMarkup []masc.Applyer
+			headerMarkup = append(headerMarkup, masc.Property("scope", "col"))
+			if col.Width != "" {
+				headerMarkup = append(headerMarkup, masc.Style("width", col.Width))
+			}
+
 			headCells = append(headCells,
 				elem.TableHeader(
-					masc.Markup(
-						masc.Property("scope", "col"),
-					),
+					masc.Markup(headerMarkup...),
 					elem.Div(
 						masc.Markup(
 							masc.Class("slds-truncate"),
@@ -114,19 +119,29 @@ func DataTableWithMenu(columns []DataTableColumn, rows []map[string]interface{},
 				)
 
 				if colIndex == 0 {
+					var cellMarkup []masc.Applyer
+					cellMarkup = append(cellMarkup, masc.Property("scope", "row"))
+					cellMarkup = append(cellMarkup, masc.Data("label", col.Label))
+					if col.Width != "" {
+						cellMarkup = append(cellMarkup, masc.Style("width", col.Width))
+					}
+
 					cells = append(cells,
 						elem.TableHeader(
-							masc.Markup(
-								masc.Property("scope", "row"),
-								masc.Data("label", col.Label),
-							),
+							masc.Markup(cellMarkup...),
 							content,
 						),
 					)
 				} else {
+					var cellMarkup []masc.Applyer
+					cellMarkup = append(cellMarkup, masc.Data("label", col.Label))
+					if col.Width != "" {
+						cellMarkup = append(cellMarkup, masc.Style("width", col.Width))
+					}
+
 					cells = append(cells,
 						elem.TableData(
-							masc.Markup(masc.Data("label", col.Label)),
+							masc.Markup(cellMarkup...),
 							content,
 						),
 					)
@@ -255,9 +270,6 @@ func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction
 					event.Click(func(e *masc.Event) {
 						button := e.Target
 						dropdown := button.Get("nextElementSibling")
-						if dropdown.IsNull() {
-							return
-						}
 						isOpen := button.Call("getAttribute", "aria-expanded").String() == "true"
 
 						// Toggle this dropdown
