@@ -36,8 +36,9 @@ var (
 	buildMutex      sync.RWMutex
 	session         *forcecli.Force
 	// deploy command flags
-	deployDir string
-	deployTab bool
+	deployDir   string
+	deployTab   bool
+	deployWatch bool
 )
 
 // indexHTML is the HTML template served for the Thunder app root.
@@ -84,6 +85,7 @@ func init() {
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8000, "Port to serve on")
 	// deploy flags (app dir is optional positional arg)
 	deployCmd.Flags().BoolVarP(&deployTab, "tab", "t", false, "Deploy and open a CustomTab for the app")
+	deployCmd.Flags().BoolVarP(&deployWatch, "watch", "w", false, "Watch for changes and automatically redeploy WASM bundle")
 	// add subcommands
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(deployCmd)
@@ -279,12 +281,11 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-// watchAndRebuild watches Go source files and rebuilds the WASM bundle on change.
-func watchAndRebuild(appDir string) {
+// watchFiles watches Go source files and calls the provided callback on changes.
+func watchFiles(appDir string, onRebuild func() error) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error setting up file watcher: %v\n", err)
-		return
+		return fmt.Errorf("error setting up file watcher: %w", err)
 	}
 	defer watcher.Close()
 
@@ -352,7 +353,7 @@ func watchAndRebuild(appDir string) {
 		select {
 		case event, ok := <-watcher.Events:
 			if !ok {
-				return
+				return nil
 			}
 			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
 				ext := filepath.Ext(event.Name)
@@ -368,26 +369,39 @@ func watchAndRebuild(appDir string) {
 			}
 		case <-rebuildTimer.C:
 			if rebuildPending {
-				fmt.Println("Rebuilding...")
-				newBuildDir, err := buildWASM(appDir)
+				err := onRebuild()
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error rebuilding WASM: %v\n", err)
-				} else {
-					buildMutex.Lock()
-					old := currentBuildDir
-					currentBuildDir = newBuildDir
-					buildMutex.Unlock()
-					os.RemoveAll(old)
-					fmt.Println("Rebuild complete")
+					fmt.Fprintf(os.Stderr, "Error during rebuild: %v\n", err)
 				}
 				rebuildPending = false
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
-				return
+				return nil
 			}
 			fmt.Fprintf(os.Stderr, "Watcher error: %v\n", err)
 		}
+	}
+}
+
+// watchAndRebuild watches Go source files and rebuilds the WASM bundle on change.
+func watchAndRebuild(appDir string) {
+	err := watchFiles(appDir, func() error {
+		fmt.Println("Rebuilding...")
+		newBuildDir, err := buildWASM(appDir)
+		if err != nil {
+			return fmt.Errorf("error rebuilding WASM: %w", err)
+		}
+		buildMutex.Lock()
+		old := currentBuildDir
+		currentBuildDir = newBuildDir
+		buildMutex.Unlock()
+		os.RemoveAll(old)
+		fmt.Println("Rebuild complete")
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Watch error: %v\n", err)
 	}
 }
 
@@ -656,7 +670,7 @@ func toPascalCase(name string) string {
 	return strings.Join(parts, "")
 }
 
-// runDeploy is a stub for the deploy subcommand.
+// runDeploy handles the deploy subcommand with optional watch functionality.
 func runDeploy(cmd *cobra.Command, args []string) error {
 	// Determine app directory (optional positional argument)
 	if len(args) > 0 {
@@ -827,7 +841,28 @@ export default class %s extends Thunder {
 		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp)
 	}
 	files["package.xml"] = []byte(pkg)
-	// Perform deployment
+	// Perform initial deployment
+	err = performDeployment(files, staticResourceName, appComp, deployTab)
+	if err != nil {
+		return err
+	}
+
+	// Cleanup temporary build directory
+	if rmErr := os.RemoveAll(buildDir); rmErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to remove temp dir %s: %v\n", buildDir, rmErr)
+	}
+
+	// If watch flag is set, start watching for changes
+	if deployWatch {
+		fmt.Printf("Watching for changes in %s (WASM-only redeploys)...\n", deployDir)
+		return watchAndRedeploy(deployDir, staticResourceName)
+	}
+
+	return nil
+}
+
+// performDeployment deploys the given metadata files to Salesforce
+func performDeployment(files forcecli.ForceMetadataFiles, staticResourceName, appComp string, openTab bool) error {
 	creds, err := forcecli.ActiveCredentials(false)
 	if err != nil {
 		return fmt.Errorf("failed to load Salesforce credentials: %w", err)
@@ -849,19 +884,73 @@ export default class %s extends Thunder {
 		}
 		return fmt.Errorf("metadata deployment completed with errors")
 	}
-	// Cleanup temporary build directory
-	if rmErr := os.RemoveAll(buildDir); rmErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to remove temp dir %s: %v\n", buildDir, rmErr)
-	}
 	fmt.Printf("Deployment complete: %+v\n", result)
+
 	// Open new tab in Salesforce if requested
-	if deployTab {
+	if openTab {
 		tabUrl := fmt.Sprintf("%s/lightning/n/%s", creds.InstanceUrl, appComp)
 		if err := desktop.Open(tabUrl); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to open tab URL: %v\n", err)
 		}
 	}
 	return nil
+}
+
+// watchAndRedeploy watches for Go source file changes and redeploys only the WASM bundle
+func watchAndRedeploy(appDir, staticResourceName string) error {
+	return watchFiles(appDir, func() error {
+		fmt.Println("Rebuilding and redeploying WASM...")
+		err := redeployWASM(appDir, staticResourceName)
+		if err != nil {
+			return fmt.Errorf("error redeploying WASM: %w", err)
+		}
+		fmt.Println("WASM redeploy complete")
+		return nil
+	})
+}
+
+// redeployWASM builds and redeploys only the WASM static resource
+func redeployWASM(appDir, staticResourceName string) error {
+	// Build production WASM bundle
+	buildDir, err := buildProdWASM(appDir)
+	if err != nil {
+		return fmt.Errorf("error building production WASM: %w", err)
+	}
+	defer os.RemoveAll(buildDir)
+
+	// Read and compress WASM bundle
+	wasmData, err := os.ReadFile(filepath.Join(buildDir, "bundle.wasm"))
+	if err != nil {
+		return err
+	}
+	zipData, err := zipBundle(wasmData)
+	if err != nil {
+		return err
+	}
+
+	// Create minimal deployment with just the static resource
+	files := make(forcecli.ForceMetadataFiles)
+	files["staticresources/"+staticResourceName+".resource"] = zipData
+	staticResourceMetadata := `<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+	<cacheControl>Private</cacheControl>
+	<contentType>application/zip</contentType>
+</StaticResource>`
+	files["staticresources/"+staticResourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
+
+	// Generate minimal package.xml for just the static resource
+	pkg := `<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types>
+    <members>` + staticResourceName + `</members>
+    <name>StaticResource</name>
+  </types>
+  <version>58.0</version>
+</Package>`
+	files["package.xml"] = []byte(pkg)
+
+	// Deploy only the WASM static resource
+	return performDeployment(files, staticResourceName, "", false)
 }
 
 // buildProdWASM compiles the Go app in appDir to WebAssembly for production.
