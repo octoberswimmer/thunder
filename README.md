@@ -18,7 +18,7 @@ Repository Structure:
 │  ├ classes/            Apex classes
 │  └ lwc/                LWC wrappers (`go`, `thunder`)
 ├ components/            MASC components for Thunder apps
-├ api/                   REST proxy for WASM apps, UI API metadata (GetObjectInfo, GetPicklistValuesByRecordType), and Record API for convenient field access (StringValue, Value)
+├ api/                   REST proxy for WASM apps, UI API metadata (GetObjectInfo, GetPicklistValuesByRecordType), Record API for convenient field access (StringValue, Value), Places API for address autocomplete, Settings API for Thunder configuration, and Exit API for application lifecycle management
 └ examples/              example Thunder applications
    ├ thunderDemo/        main demo app showcasing all components
    └ validation/         comprehensive form validation example
@@ -60,7 +60,7 @@ Thunder provides a comprehensive set of SLDS-styled components for building Ligh
 - **`TextInput`**: Single-line text input with label and validation styling
 - **`Textarea`**: Multi-line text input for longer content (e.g., addresses, descriptions)
 - **`Select`**: Dropdown selection with picklist options
-- **`Datepicker`**: Date input with SLDS calendar styling
+- **`Datepicker`**: Date input with SLDS calendar styling (uses `time.Time` values)
 - **`Timepicker`**: Time input with 24-hour format (HH:MM)
 - **`Checkbox`**: Boolean input with proper labeling
 - **`RadioGroup`**: Multiple choice selection with radio buttons in form layout
@@ -80,13 +80,17 @@ Thunder provides a comprehensive set of SLDS-styled components for building Ligh
 - **`Card`**: Content containers with headers and proper spacing
 - **`Page`** & **`PageHeader`**: Page-level layout with consistent styling
 - **`Modal`**: Dialog overlays for secondary workflows
+- **`ModalWithClose`**: Modal with built-in close button and enhanced functionality
+- **`Form`**: Semantic form wrapper with proper SLDS styling
 - **`Container`**: Basic layout wrapper to avoid direct element usage
 - **`Spacer`**: Flexible spacing container with margin/padding options
 - **`MarginTop`**, **`MarginBottom`**, **`PaddingHorizontal`**, etc.: Semantic spacing components
 
 ### Data Components
 - **`DataTable`**: Feature-rich data tables with sorting and actions
+- **`DataTableWithMenu`**: Enhanced data table with dropdown menu actions and loading states
 - **`Lookup`**: Search and selection for related records
+- **`AddressAutocomplete`**: Google Maps Places API integration for address input with autocomplete suggestions
 
 ### UI Components
 - **`Button`**: Action buttons with variant styling (Neutral, Brand, Destructive)
@@ -193,8 +197,9 @@ Thunder provides validated form components that handle error states, required fi
 - **`ValidatedTextarea`**: Multi-line text with validation
 - **`ValidatedSelect`**: Dropdown selection with validation
 - **`ValidatedRadioButtonGroup`**: Radio button group with validation state
-- **`ValidatedDatepicker`**: Date input with validation
+- **`ValidatedDatepicker`**: Date input with validation (uses `time.Time` values)
 - **`ValidatedTimepicker`**: Time input with validation (24-hour format)
+- **`ValidatedLookup`**: Search and selection component with validation state
 
 ### ValidationState
 All validated components use the `ValidationState` struct:
@@ -308,6 +313,8 @@ Comprehensive form validation example demonstrating:
 - Required field indicators and error messages
 - Loading states with `LoadingButton`
 - Semantic spacing with `MarginTop` and `Spacer`
+- Address autocomplete integration with Google Maps Places API
+- Thunder Settings configuration for API keys
 
 Shows how to build robust forms using only Thunder components.
 
@@ -346,9 +353,11 @@ API REST requests (via `/services/`) are automatically proxied through your acti
 
 #### deploy
 - `--tab, -t`: Also include a CustomTab in the deployment and open it for the app
+- `--watch, -w`: Watch for file changes and automatically redeploy
 
 `thunder deploy`:
 - Builds a production WebAssembly bundle.
 - Packages metadata (static resource, Apex classes, LWC wrappers, app LWC, and optional CustomTab) in-memory.
 - Generates `package.xml` (includes CustomTab if requested) and deploys all metadata via your CLI session.
 - With `--tab`, adds a CustomTab to the package, deploys it, and opens `/lightning/n/<app>` in your browser.
+- With `--watch`, monitors Go source files and automatically redeploys on changes for rapid development cycles.
