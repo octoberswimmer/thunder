@@ -1,8 +1,6 @@
 package components
 
 import (
-	"fmt"
-
 	"github.com/octoberswimmer/masc"
 	"github.com/octoberswimmer/masc/elem"
 	"github.com/octoberswimmer/masc/event"
@@ -243,6 +241,7 @@ func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction
 			masc.Markup(
 				masc.Class("slds-dropdown-trigger", "slds-dropdown-trigger_click"),
 				masc.Data("dropdownid", dropdownId),
+				masc.Style("position", "relative"),
 			),
 			// Trigger button
 			elem.Button(
@@ -266,15 +265,8 @@ func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction
 							button.Call("setAttribute", "aria-expanded", "false")
 							dropdown.Get("style").Set("display", "none")
 						} else {
-							// Position dropdown relative to button for fixed positioning
-							rect := button.Call("getBoundingClientRect")
-							top := rect.Get("bottom").Float() + 2   // 2px below button
-							left := rect.Get("right").Float() - 100 // Align right edge, assuming ~100px dropdown width
-
 							button.Call("setAttribute", "aria-expanded", "true")
 							dropdown.Get("style").Set("display", "block")
-							dropdown.Get("style").Set("top", fmt.Sprintf("%.0fpx", top))
-							dropdown.Get("style").Set("left", fmt.Sprintf("%.0fpx", left))
 						}
 					}),
 				),
@@ -291,9 +283,11 @@ func renderMenuCell(col DataTableColumn, row map[string]interface{}, onRowAction
 					masc.Property("role", "menu"),
 					masc.Attribute("aria-labelledby", dropdownId),
 					masc.Style("display", "none"), // Initially hidden
-					masc.Style("position", "fixed"),
-					masc.Style("z-index", "9999"),
+					masc.Style("position", "absolute"),
+					masc.Style("z-index", "1000"),
 					masc.Style("min-width", "6rem"),
+					masc.Style("top", "100%"),
+					masc.Style("right", "0"),
 				),
 				elem.UnorderedList(
 					masc.Markup(

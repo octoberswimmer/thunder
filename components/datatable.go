@@ -344,6 +344,7 @@ func ScrollableDataTableWithMenu(columns []DataTableColumn, rows []map[string]in
 	return elem.Div(
 		masc.Markup(
 			masc.Class("slds-scrollable_x"),
+			masc.Style("padding-bottom", "120px"),
 		),
 		DataTableWithMenu(columns, rows, onRowAction),
 	)
