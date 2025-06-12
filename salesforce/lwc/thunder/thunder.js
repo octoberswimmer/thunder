@@ -28,11 +28,9 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 	initialized = false;
 
 	renderedCallback() {
-		if (this.isConsoleNavigation) {
+		if (this.isConsoleNavigation && this.appName && !this.isQuickAction()) {
 			getFocusedTabInfo().then((tabInfo) => {
-				// Use provided appName or fallback to default
-				const label = this.appName || 'Thunder App';
-				setTabLabel(tabInfo.tabId, label);
+				setTabLabel(tabInfo.tabId, this.appName);
 				setTabIcon(tabInfo.tabId, 'apex');
 			});
 		}
