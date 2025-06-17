@@ -39,6 +39,9 @@ var (
 	deployDir   string
 	deployTab   bool
 	deployWatch bool
+	// build command flags
+	buildDev    bool
+	buildOutput string
 )
 
 // indexHTML is the HTML template served for the Thunder app root.
@@ -80,15 +83,27 @@ var deployCmd = &cobra.Command{
 	RunE:  runDeploy,
 }
 
+// build command
+var buildCmd = &cobra.Command{
+	Use:   "build [dir]",
+	Short: "Build the Thunder app to WebAssembly",
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runBuild,
+}
+
 func init() {
 	// serve flags (port only; app dir is optional positional arg)
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8000, "Port to serve on")
 	// deploy flags (app dir is optional positional arg)
 	deployCmd.Flags().BoolVarP(&deployTab, "tab", "t", false, "Deploy and open a CustomTab for the app")
 	deployCmd.Flags().BoolVarP(&deployWatch, "watch", "w", false, "Watch for changes and automatically redeploy WASM bundle")
+	// build flags
+	buildCmd.Flags().BoolVarP(&buildDev, "dev", "d", false, "Build with development tags")
+	buildCmd.Flags().StringVarP(&buildOutput, "output", "o", "./build", "Output directory for build artifacts")
 	// add subcommands
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(deployCmd)
+	rootCmd.AddCommand(buildCmd)
 }
 
 func main() {
@@ -668,6 +683,74 @@ func toPascalCase(name string) string {
 		}
 	}
 	return strings.Join(parts, "")
+}
+
+// runBuild handles the build subcommand to compile the app to WebAssembly.
+func runBuild(cmd *cobra.Command, args []string) error {
+	// Determine app directory (optional positional argument)
+	buildDir := "."
+	if len(args) > 0 {
+		buildDir = args[0]
+	}
+
+	// Validate app directory
+	info, err := os.Stat(buildDir)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("Invalid app directory: %s", buildDir)
+	}
+
+	// Build the WASM
+	fmt.Printf("Building Thunder app from %s...\n", buildDir)
+	var tempBuildDir string
+	if buildDev {
+		tempBuildDir, err = buildWASM(buildDir)
+	} else {
+		tempBuildDir, err = buildProdWASM(buildDir)
+	}
+	if err != nil {
+		return fmt.Errorf("Error building WASM: %w", err)
+	}
+	defer os.RemoveAll(tempBuildDir)
+
+	// Create output directory if it doesn't exist
+	outputDir := buildOutput
+	if !filepath.IsAbs(outputDir) {
+		outputDir = filepath.Join(buildDir, outputDir)
+	}
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("Failed to create output directory: %w", err)
+	}
+
+	// Copy build artifacts to output directory
+	wasmSrc := filepath.Join(tempBuildDir, "bundle.wasm")
+	wasmDst := filepath.Join(outputDir, "bundle.wasm")
+	if err := copyFile(wasmSrc, wasmDst); err != nil {
+		return fmt.Errorf("Failed to copy WASM bundle: %w", err)
+	}
+
+	// Copy wasm_exec.js for dev builds
+	if buildDev {
+		wasmExecSrc := filepath.Join(tempBuildDir, "wasm_exec.js")
+		wasmExecDst := filepath.Join(outputDir, "wasm_exec.js")
+		if err := copyFile(wasmExecSrc, wasmExecDst); err != nil {
+			return fmt.Errorf("Failed to copy wasm_exec.js: %w", err)
+		}
+	}
+
+	// Report success
+	mode := "production"
+	if buildDev {
+		mode = "development"
+	}
+	fmt.Printf("\nSuccessfully built Thunder app (%s mode)\n", mode)
+	fmt.Printf("Output directory: %s\n", outputDir)
+	fmt.Printf("Files generated:\n")
+	fmt.Printf("  - bundle.wasm\n")
+	if buildDev {
+		fmt.Printf("  - wasm_exec.js\n")
+	}
+
+	return nil
 }
 
 // runDeploy handles the deploy subcommand with optional watch functionality.
