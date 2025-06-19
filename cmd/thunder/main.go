@@ -606,6 +606,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Set up HTTP handlers
 	http.HandleFunc("/services/", proxyHandler)
+	http.HandleFunc("/cometd/", proxyHandler)
 	http.HandleFunc("/api/settings", settingsHandler)
 	http.HandleFunc("/bundle.wasm", wasmHandler)
 	http.HandleFunc("/wasm_exec.js", wasmExecHandler)
