@@ -255,6 +255,7 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 		data = append(data,
 			components.MarginTop(components.SpaceMedium,
 				components.RadioButtonGroup(
+					"Style Selector",
 					"filterstyle",
 					[]components.RadioButtonOption{
 						{Label: "Radio", Value: "radio"},
@@ -285,6 +286,7 @@ func (m *AppModel) renderDataContent(send func(masc.Msg)) masc.ComponentOrHTML {
 			data = append(data,
 				components.MarginTop(components.SpaceMedium,
 					components.RadioButtonGroup(
+						"Filter Mode",
 						"filtermode",
 						[]components.RadioButtonOption{
 							{Label: "Contains", Value: "contains"},

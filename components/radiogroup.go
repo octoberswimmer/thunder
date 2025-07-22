@@ -85,11 +85,33 @@ type RadioButtonOption struct {
 
 // RadioButtonGroup renders an SLDS styled group of radio buttons using the radio button group pattern.
 // This follows the SLDS Radio Button Group component specification.
+// label is the optional form element label text (can be empty string for no label).
 // name is the shared name attribute for the radio inputs.
 // options is the slice of RadioButtonOption values.
 // selected is the currently selected option value.
 // onChange is called with the Value of the selected option when clicked.
-func RadioButtonGroup(name string, options []RadioButtonOption, selected string, onChange func(string)) masc.ComponentOrHTML {
+func RadioButtonGroup(label, name string, options []RadioButtonOption, selected string, onChange func(string)) masc.ComponentOrHTML {
+	// If a label is provided, wrap the radio button group in a form element
+	if label != "" {
+		return elem.Div(
+			masc.Markup(masc.Class("slds-form-element")),
+			elem.Label(
+				masc.Markup(masc.Class("slds-form-element__label")),
+				masc.Text(label),
+			),
+			elem.Div(
+				masc.Markup(masc.Class("slds-form-element__control")),
+				renderRadioButtonGroup(name, options, selected, onChange),
+			),
+		)
+	}
+
+	// No label, just return the radio button group
+	return renderRadioButtonGroup(name, options, selected, onChange)
+}
+
+// renderRadioButtonGroup renders the actual radio button group without label wrapping
+func renderRadioButtonGroup(name string, options []RadioButtonOption, selected string, onChange func(string)) masc.ComponentOrHTML {
 	var args []masc.MarkupOrChild
 	args = append(args,
 		masc.Markup(

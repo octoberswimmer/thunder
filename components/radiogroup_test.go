@@ -21,7 +21,7 @@ func TestRadioButtonGroupBasic(t *testing.T) {
 		{Label: "Option 2", Value: "opt2"},
 		{Label: "Option 3", Value: "opt3"},
 	}
-	comp := RadioButtonGroup("choices", opts, "opt1", func(val string) {})
+	comp := RadioButtonGroup("", "choices", opts, "opt1", func(val string) {})
 	if comp == nil {
 		t.Error("RadioButtonGroup returned nil for valid parameters")
 	}
@@ -29,7 +29,7 @@ func TestRadioButtonGroupBasic(t *testing.T) {
 
 // TestRadioButtonGroupEmptyOptions verifies that RadioButtonGroup handles empty options.
 func TestRadioButtonGroupEmptyOptions(t *testing.T) {
-	comp := RadioButtonGroup("empty", []RadioButtonOption{}, "", nil)
+	comp := RadioButtonGroup("", "empty", []RadioButtonOption{}, "", nil)
 	if comp == nil {
 		t.Error("RadioButtonGroup returned nil for empty options")
 	}
@@ -40,8 +40,20 @@ func TestRadioButtonGroupNilHandler(t *testing.T) {
 	opts := []RadioButtonOption{
 		{Label: "Test", Value: "test"},
 	}
-	comp := RadioButtonGroup("test", opts, "test", nil)
+	comp := RadioButtonGroup("", "test", opts, "test", nil)
 	if comp == nil {
 		t.Error("RadioButtonGroup returned nil with nil onChange handler")
+	}
+}
+
+// TestRadioButtonGroupWithLabel verifies that RadioButtonGroup handles label parameter.
+func TestRadioButtonGroupWithLabel(t *testing.T) {
+	opts := []RadioButtonOption{
+		{Label: "Yes", Value: "yes"},
+		{Label: "No", Value: "no"},
+	}
+	comp := RadioButtonGroup("Do you want to continue?", "continue", opts, "yes", func(val string) {})
+	if comp == nil {
+		t.Error("RadioButtonGroup returned nil with label")
 	}
 }

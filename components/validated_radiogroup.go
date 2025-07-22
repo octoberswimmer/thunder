@@ -45,7 +45,7 @@ func ValidatedRadioButtonGroup(label, name string, options []RadioButtonOption, 
 	children = append(children,
 		elem.Div(
 			masc.Markup(masc.Class("slds-form-element__control")),
-			RadioButtonGroup(name, options, selected, onChange),
+			RadioButtonGroup("", name, options, selected, onChange),
 		),
 	)
 
