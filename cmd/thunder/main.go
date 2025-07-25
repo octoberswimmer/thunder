@@ -39,6 +39,7 @@ var (
 	deployDir   string
 	deployTab   bool
 	deployWatch bool
+	deployDebug bool
 	// build command flags
 	buildDev    bool
 	buildOutput string
@@ -97,6 +98,7 @@ func init() {
 	// deploy flags (app dir is optional positional arg)
 	deployCmd.Flags().BoolVarP(&deployTab, "tab", "t", false, "Deploy and open a CustomTab for the app")
 	deployCmd.Flags().BoolVarP(&deployWatch, "watch", "w", false, "Watch for changes and automatically redeploy WASM bundle")
+	deployCmd.Flags().BoolVar(&deployDebug, "debug", false, "Enable debug output")
 	// build flags
 	buildCmd.Flags().BoolVarP(&buildDev, "dev", "d", false, "Build with development tags")
 	buildCmd.Flags().StringVarP(&buildOutput, "output", "o", "./build", "Output directory for build artifacts")
@@ -973,6 +975,9 @@ func performDeployment(files forcecli.ForceMetadataFiles, staticResourceName, ap
 	// Open new tab in Salesforce if requested
 	if openTab {
 		tabUrl := fmt.Sprintf("%s/lightning/n/%s", creds.InstanceUrl, appComp)
+		if deployDebug {
+			fmt.Printf("Debug: Opening URL: %s\n", tabUrl)
+		}
 		if err := desktop.Open(tabUrl); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to open tab URL: %v\n", err)
 		}
