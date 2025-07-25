@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"syscall/js"
 	"time"
@@ -20,9 +19,6 @@ var getMutex sync.Mutex
 // It returns an error if the underlying promise is rejected.
 // GET requests are serialized to prevent Lightning XHR connection pool issues.
 func Get(url string) ([]byte, error) {
-	if len(url) > 100 && url[50:60] == "PurchaserP" {
-		panic(fmt.Sprintf("DEBUG: Get() called for PurchaserPlan URL: %s", url))
-	}
 	getMutex.Lock()
 
 	dataCh := make(chan []byte, 1) // Buffered channel to prevent blocking
@@ -33,9 +29,6 @@ func Get(url string) ([]byte, error) {
 		// Check what the get call returns
 		result := js.Global().Call("get", url)
 		resultType := result.Type()
-		if strings.Contains(url, "PurchaserPlan") {
-			// panic("called get for Purchaser Plan query: " + url)
-		}
 
 		// Panic if our assumption about get() returning an object is wrong
 		if resultType == js.TypeUndefined || resultType == js.TypeNull {
@@ -58,9 +51,6 @@ func Get(url string) ([]byte, error) {
 		}
 
 		then := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-			if strings.Contains(url, "PurchaserPlan") {
-				// panic("then callback for Purchaser Plan called")
-			}
 			// Panic if our assumption about success callback args is wrong
 			if len(args) != 1 {
 				panic(fmt.Sprintf("ASSUMPTION FAILED: success callback expected 1 arg, got %d for URL: %s", len(args), url))
@@ -73,9 +63,6 @@ func Get(url string) ([]byte, error) {
 		})
 
 		catch := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-			if strings.Contains(url, "PurchaserPlan") {
-				panic("catch callback for Purchaser Plan called")
-			}
 			// Panic if our assumption about error callback args is wrong
 			if len(args) != 1 {
 				panic(fmt.Sprintf("ASSUMPTION FAILED: error callback expected 1 arg, got %d for URL: %s", len(args), url))
