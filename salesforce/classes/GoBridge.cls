@@ -126,7 +126,19 @@ public with sharing class GoBridge {
 			String soql = EncodingUtil.urlDecode(soqlEnc, 'UTF-8');
 
 			start = 0;
-			cursor = Database.getCursor(soql);
+
+			try {
+				cursor = Database.getCursor(soql);
+			} catch (System.FatalCursorException e) {
+				// Handle Salesforce bug where some queries that return no results
+				// throw FatalCursorException when creating cursor
+				Map<String, Object> emptyResult = new Map<String, Object>{
+					'totalSize' => 0,
+					'done' => true,
+					'records' => new List<Map<String, Object>>()
+				};
+				return JSON.serialize(emptyResult);
+			}
 		} else {
 			// Subsequent page via locator-offset
 			start = getStart(url);
@@ -136,7 +148,23 @@ public with sharing class GoBridge {
 		Integer totalSize = cursor.getNumRecords();
 		Integer remaining = totalSize - start;
 		Integer count = remaining < PAGE_SIZE ? remaining : PAGE_SIZE;
-		List<sObject> records = cursor.fetch(start, count);
+		List<sObject> records = new List<sObject>();
+
+		// Special handling for empty result sets
+		if (totalSize == 0) {
+			// Don't call cursor.fetch when there are no results
+			// Just return empty result immediately
+			Map<String, Object> emptyResult = new Map<String, Object>{
+				'totalSize' => 0,
+				'done' => true,
+				'records' => new List<Map<String, Object>>() // Use List<Map> instead of List<sObject>
+			};
+			return JSON.serialize(emptyResult);
+		}
+
+		if (count > 0) {
+			records = cursor.fetch(start, count);
+		}
 		Boolean done = (start + records.size() >= totalSize);
 
 		Map<String, Object> result = new Map<String, Object>{

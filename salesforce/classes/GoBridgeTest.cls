@@ -944,4 +944,101 @@ private class GoBridgeTest {
 		Contact updatedContact = [SELECT Birthdate FROM Contact WHERE Id = :testContact.Id];
 		System.assertEquals(Date.newInstance(1985, 6, 15), updatedContact.Birthdate, 'processSubRequest should use setFieldsWithTypeConversion for date conversion');
 	}
+
+	@isTest
+	static void should_handle_query_with_no_results_without_causing_gack() {
+		// This test ensures that queries returning no rows don't cause a gack
+		// by calling cursor.fetch(0, 0), which was fixed by adding count > 0 check
+		String soql = 'SELECT Id, Name FROM Account WHERE Name = \'NonExistentAccountName12345\'';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+		String url = '/services/data/v58.0/query?q=' + soqlEnc;
+
+		// This should not throw an exception or cause a gack
+		String jsonResp = GoBridge.callRest('GET', url, null);
+
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+		System.assertEquals(0, (Integer)result.get('totalSize'), 'totalSize should be 0 for no results');
+		System.assertEquals(true, (Boolean)result.get('done'), 'done should be true when no results');
+		List<Object> recs = (List<Object>)result.get('records');
+		System.assertEquals(0, recs.size(), 'records list should be empty');
+		System.assertEquals(null, result.get('nextRecordsUrl'), 'nextRecordsUrl should be null when no results');
+	}
+
+	@isTest
+	static void should_handle_pagination_cursor_with_no_remaining_results() {
+		// Override page size for controlled pagination scenario
+		GoBridge.PAGE_SIZE = 1;
+
+		// Create exactly one account
+		Account acct = new Account(Name = 'PaginationEndTest', Type = 'VA');
+		insert acct;
+
+		// Build query URL (initial page)
+		String soql = 'SELECT Id, Name FROM Account WHERE Name = \'PaginationEndTest\' ORDER BY Name';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+		String url = '/services/data/v58.0/query?q=' + soqlEnc;
+
+		// First page - should get the one record
+		String jsonResp1 = GoBridge.callRest('GET', url, null);
+		Map<String, Object> result1 = (Map<String, Object>)JSON.deserializeUntyped(jsonResp1);
+		System.assertEquals(1, (Integer)result1.get('totalSize'));
+		System.assertEquals(true, (Boolean)result1.get('done'), 'done should be true when all results fit in one page');
+		List<Object> recs1 = (List<Object>)result1.get('records');
+		System.assertEquals(1, recs1.size());
+		System.assertEquals(null, result1.get('nextRecordsUrl'), 'nextRecordsUrl should be null when done');
+	}
+
+	@isTest
+	static void test_empty_sobject_list_serialization() {
+		// Test that empty sObject lists can be serialized without issues
+		List<sObject> emptyList = new List<sObject>();
+		Map<String, Object> testMap = new Map<String, Object>{
+			'totalSize' => 0,
+			'done' => true,
+			'records' => emptyList
+		};
+
+		// This should not throw an exception
+		String serialized = JSON.serialize(testMap);
+		System.assertNotEquals(null, serialized, 'Should be able to serialize empty sObject list');
+
+		// And should be able to deserialize it back
+		Map<String, Object> deserialized = (Map<String, Object>)JSON.deserializeUntyped(serialized);
+		System.assertEquals(0, deserialized.get('totalSize'));
+		System.assertEquals(true, deserialized.get('done'));
+		List<Object> records = (List<Object>)deserialized.get('records');
+		System.assertEquals(0, records.size());
+	}
+
+	@isTest
+	static void should_handle_composite_request_with_query_returning_no_results() {
+		// Test composite request containing a query that returns no results
+		// This ensures the fix for cursor.fetch(0, 0) also works in composite requests
+		String soql = 'SELECT Id, Name FROM Account WHERE Name = \'CompositeNonExistentAccount98765\'';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+
+		String url = '/services/data/v58.0/composite';
+		String body = '{' + '"compositeRequest": [' +
+			'{"method": "GET", "url": "/services/data/v58.0/query?q=' +
+			soqlEnc +
+			'", "referenceId": "emptyQueryRef"}' +
+			']}';
+
+		// This should not throw an exception or cause a gack
+		String jsonResp = GoBridge.callRest('POST', url, body);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		List<Object> compositeResponse = (List<Object>)result.get('compositeResponse');
+		System.assertEquals(1, compositeResponse.size(), 'should have 1 sub-response');
+
+		Map<String, Object> subResp = (Map<String, Object>)compositeResponse[0];
+		System.assertEquals('emptyQueryRef', subResp.get('referenceId'));
+		System.assertEquals(200, subResp.get('httpStatusCode'), 'should succeed even with no results');
+		Map<String, Object> queryResult = (Map<String, Object>)subResp.get('body');
+		System.assertEquals(0, queryResult.get('totalSize'), 'totalSize should be 0 for no results');
+		System.assertEquals(true, queryResult.get('done'), 'done should be true when no results');
+		List<Object> records = (List<Object>)queryResult.get('records');
+		System.assertEquals(0, records.size(), 'records should be empty');
+		System.assertEquals(null, queryResult.get('nextRecordsUrl'), 'nextRecordsUrl should be null when no results');
+	}
 }
