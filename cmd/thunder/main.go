@@ -36,10 +36,11 @@ var (
 	buildMutex      sync.RWMutex
 	session         *forcecli.Force
 	// deploy command flags
-	deployDir   string
-	deployTab   bool
-	deployWatch bool
-	deployDebug bool
+	deployDir     string
+	deployTab     bool
+	deployWatch   bool
+	deployDebug   bool
+	deployAppOnly bool
 	// build command flags
 	buildDev    bool
 	buildOutput string
@@ -99,6 +100,7 @@ func init() {
 	deployCmd.Flags().BoolVarP(&deployTab, "tab", "t", false, "Deploy and open a CustomTab for the app")
 	deployCmd.Flags().BoolVarP(&deployWatch, "watch", "w", false, "Watch for changes and automatically redeploy WASM bundle")
 	deployCmd.Flags().BoolVar(&deployDebug, "debug", false, "Enable debug output")
+	deployCmd.Flags().BoolVar(&deployAppOnly, "app-only", false, "Deploy only the static resource (WASM bundle)")
 	// build flags
 	buildCmd.Flags().BoolVarP(&buildDev, "dev", "d", false, "Build with development tags")
 	buildCmd.Flags().StringVarP(&buildOutput, "output", "o", "./build", "Output directory for build artifacts")
@@ -815,6 +817,34 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	<contentType>application/zip</contentType>
 </StaticResource>`
 	files["staticresources/"+staticResourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
+
+	// If --app-only flag is set, only deploy the static resource
+	if deployAppOnly {
+		// Generate minimal package.xml for just the static resource
+		pkg := `<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types>
+    <members>` + staticResourceName + `</members>
+    <name>StaticResource</name>
+  </types>
+  <version>58.0</version>
+</Package>`
+		files["package.xml"] = []byte(pkg)
+
+		// Perform deployment
+		err = performDeployment(files, staticResourceName, "", false)
+		if err != nil {
+			return err
+		}
+
+		// Cleanup temporary build directory
+		if rmErr := os.RemoveAll(buildDir); rmErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove temp dir %s: %v\n", buildDir, rmErr)
+		}
+
+		return nil
+	}
+
 	// Apex classes
 	apexTemplates := []struct{ src, dst string }{
 		{"classes/GoBridge.cls", "classes/GoBridge.cls"},
@@ -954,7 +984,11 @@ func performDeployment(files forcecli.ForceMetadataFiles, staticResourceName, ap
 		return fmt.Errorf("failed to load Salesforce credentials: %w", err)
 	}
 	fm := forcecli.NewForce(&creds)
-	opts := forcecli.ForceDeployOptions{SinglePackage: true}
+	opts := forcecli.ForceDeployOptions{
+		SinglePackage:   true,
+		RollbackOnError: true,
+		RunTests:        []string{}, // Empty slice to avoid running tests
+	}
 	fmt.Printf("Deploying metadata to %s...\n", creds.InstanceUrl)
 	result, err := fm.Metadata.Deploy(files, opts)
 	if err != nil {

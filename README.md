@@ -43,6 +43,7 @@ Getting Started:
 1. Install dependencies:
    - Go 1.24+ (with WASM support)
 	- [Force CLI](https://github.com/forcecli/force)
+   - Lightning Web Security must be enabled in your Salesforce org
 2. Run the thunderDemo app locally:
    ```sh
    $ force login
@@ -354,6 +355,8 @@ API REST requests (via `/services/`) are automatically proxied through your acti
 #### deploy
 - `--tab, -t`: Also include a CustomTab in the deployment and open it for the app
 - `--watch, -w`: Watch for file changes and automatically redeploy
+- `--app-only`: Deploy only the static resource (WASM bundle), skipping LWC, Apex, and other metadata
+- `--debug`: Enable debug output
 
 `thunder deploy`:
 - Builds a production WebAssembly bundle.
@@ -361,3 +364,5 @@ API REST requests (via `/services/`) are automatically proxied through your acti
 - Generates `package.xml` (includes CustomTab if requested) and deploys all metadata via your CLI session.
 - With `--tab`, adds a CustomTab to the package, deploys it, and opens `/lightning/n/<app>` in your browser.
 - With `--watch`, monitors Go source files and automatically redeploys on changes for rapid development cycles.
+- With `--app-only`, deploys only the static resource containing the WASM bundle. This is useful for production deployments where the supporting metadata (LWC components, Apex classes) are already deployed.
+- All deployments use `rollbackOnError: true` and skip test execution for faster deployment to production.
