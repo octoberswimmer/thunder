@@ -19,7 +19,6 @@ import (
 	"time"
 	"unicode"
 
-	salesforce "github.com/octoberswimmer/thunder/salesforce"
 	"golang.org/x/tools/go/packages"
 
 	desktop "github.com/ForceCLI/force/desktop"
@@ -27,6 +26,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 )
+
+// Build-time variable that can be overridden with -ldflags
+var osgoPackageVersionId = "04tKe000000xAZxIAM"
 
 // global state for serve command
 var (
@@ -758,6 +760,123 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// isOsgoPackageInstalled checks if the osgo package is installed in the org
+func isOsgoPackageInstalled(force *forcecli.Force) (bool, error) {
+	// Query using Tooling API to check for InstalledSubscriberPackage
+	query := fmt.Sprintf("SELECT Id FROM InstalledSubscriberPackage WHERE SubscriberPackageVersionId = '%s' LIMIT 1", osgoPackageVersionId)
+	result, err := force.Query(query, func(options *forcecli.QueryOptions) {
+		options.IsTooling = true
+	})
+	if err != nil {
+		// If the query fails, try checking for the namespace in ApexClass
+		altQuery := "SELECT COUNT() FROM ApexClass WHERE NamespacePrefix = 'osgo'"
+		altResult, altErr := force.Query(altQuery)
+		if altErr != nil {
+			return false, fmt.Errorf("failed to query for osgo package: %w", err)
+		}
+		if len(altResult.Records) > 0 && altResult.Records[0]["expr0"] != nil {
+			count := int(altResult.Records[0]["expr0"].(float64))
+			return count > 0, nil
+		}
+		return false, nil
+	}
+	return result.TotalSize > 0, nil
+}
+
+// installOsgoPackage installs the osgo package using the Tooling API
+func installOsgoPackage(force *forcecli.Force) error {
+	fmt.Printf("Installing osgo package %s...\n", osgoPackageVersionId)
+
+	// Create PackageInstallRequest using Tooling API
+	attrs := map[string]string{
+		"SubscriberPackageVersionKey": osgoPackageVersionId,
+		"EnableRss":                   "false",
+		"NameConflictResolution":      "Block",
+		"SecurityType":                "None",
+		"UpgradeType":                 "Mixed",
+	}
+
+	result, err := force.CreateToolingRecord("PackageInstallRequest", attrs)
+	if err != nil {
+		return fmt.Errorf("failed to create PackageInstallRequest: %w", err)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("failed to create PackageInstallRequest: %v", result.Errors)
+	}
+
+	requestId := result.Id
+	fmt.Printf("Package install request created: %s\n", requestId)
+
+	// Poll for completion
+	for i := 0; i < 120; i++ { // Poll for up to 10 minutes
+		time.Sleep(5 * time.Second)
+
+		query := fmt.Sprintf("SELECT Id, Status, Errors FROM PackageInstallRequest WHERE Id = '%s'", requestId)
+		queryResult, err := force.Query(query, func(options *forcecli.QueryOptions) {
+			options.IsTooling = true
+		})
+		if err != nil {
+			return fmt.Errorf("failed to query PackageInstallRequest status: %w", err)
+		}
+
+		if len(queryResult.Records) == 0 {
+			return fmt.Errorf("PackageInstallRequest not found: %s", requestId)
+		}
+
+		record := queryResult.Records[0]
+		status := record["Status"].(string)
+
+		if status == "SUCCESS" {
+			fmt.Printf("Successfully installed osgo package\n")
+			return nil
+		} else if status == "ERROR" {
+			errors := ""
+			if record["Errors"] != nil {
+				errors = fmt.Sprintf("%v", record["Errors"])
+			}
+			return fmt.Errorf("package installation failed: %s", errors)
+		}
+
+		if i%4 == 0 { // Print status every 20 seconds
+			fmt.Printf("Installation status: %s\n", status)
+		}
+	}
+
+	return fmt.Errorf("package installation timed out after 10 minutes")
+}
+
+// ensureOsgoPackageInstalled checks if osgo package is installed and installs it if not
+func ensureOsgoPackageInstalled() error {
+	creds, err := forcecli.ActiveCredentials(false)
+	if err != nil {
+		return fmt.Errorf("failed to get Salesforce credentials: %w", err)
+	}
+
+	force := forcecli.NewForce(&creds)
+
+	installed, err := isOsgoPackageInstalled(force)
+	if err != nil {
+		// Log warning but continue - package check failed but deployment might still work
+		fmt.Printf("Warning: Could not verify osgo package installation: %v\n", err)
+		fmt.Printf("Continuing with deployment...\n")
+		return nil
+	}
+
+	if !installed {
+		fmt.Printf("osgo package not found, installing...\n")
+		if err := installOsgoPackage(force); err != nil {
+			return err
+		}
+	} else {
+		if deployDebug {
+			fmt.Printf("osgo package is already installed\n")
+		}
+	}
+
+	return nil
+}
+
 // runDeploy handles the deploy subcommand with optional watch functionality.
 func runDeploy(cmd *cobra.Command, args []string) error {
 	// Determine app directory (optional positional argument)
@@ -786,6 +905,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	pkgs, _ := packages.Load(cfg, ".")
 	if len(pkgs) == 0 || pkgs[0].Name != "main" {
 		return fmt.Errorf("serve directory %s is not package main", deployDir)
+	}
+
+	// Check for osgo package installation and install if needed
+	if err := ensureOsgoPackageInstalled(); err != nil {
+		return fmt.Errorf("failed to ensure osgo package is installed: %w", err)
 	}
 	// Build production WASM bundle
 	fmt.Printf("Building production WASM bundle in %s...\n", deployDir)
@@ -845,42 +969,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Apex classes
-	apexTemplates := []struct{ src, dst string }{
-		{"classes/GoBridge.cls", "classes/GoBridge.cls"},
-		{"classes/GoBridge.cls-meta.xml", "classes/GoBridge.cls-meta.xml"},
-		{"classes/GoBridgeTest.cls", "classes/GoBridgeTest.cls"},
-		{"classes/GoBridgeTest.cls-meta.xml", "classes/GoBridgeTest.cls-meta.xml"},
-	}
-	for _, t := range apexTemplates {
-		if data, err := salesforce.SalesforceMetadataFS.ReadFile(t.src); err == nil {
-			files[t.dst] = data
-		}
-	}
-
-	// Custom Objects (Thunder Settings)
-	objectTemplates := []struct{ src, dst string }{
-		{"objects/Thunder_Settings__c.object", "objects/Thunder_Settings__c.object"},
-	}
-	for _, t := range objectTemplates {
-		if data, err := salesforce.SalesforceMetadataFS.ReadFile(t.src); err == nil {
-			files[t.dst] = data
-		}
-	}
-	// LWC components (runtime and wrapper)
-	for _, comp := range []string{"go", "thunder"} {
-		base := "lwc/" + comp
-		entries, _ := salesforce.SalesforceMetadataFS.ReadDir(base)
-		for _, e := range entries {
-			if data, err := salesforce.SalesforceMetadataFS.ReadFile(base + "/" + e.Name()); err == nil {
-				files["lwc/"+comp+"/"+e.Name()] = data
-			}
-		}
-	}
+	// Note: GoBridge, Thunder_Settings__c, go and thunder LWCs are now provided by the osgo package
+	// So we don't need to deploy them anymore
 	// Generate LWC for the deployed app
 	appComp := lwcName
 	// JS wrapper for the app, importing the static resource
-	js := fmt.Sprintf(`import Thunder from 'c/thunder';
+	// Import thunder from the osgo namespace
+	js := fmt.Sprintf(`import Thunder from 'osgo/thunder';
 import APP_URL from '@salesforce/resourceUrl/%s';
 
 export default class %s extends Thunder {
@@ -919,6 +1014,7 @@ export default class %s extends Thunder {
 		files[fmt.Sprintf("tabs/%s.tab-meta.xml", appComp)] = []byte(tabXml)
 	}
 	// Generate package.xml for the deployment
+	// Only deploy the app-specific components, not the osgo package components
 	packageTpl := `<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
   <types>
@@ -926,17 +1022,6 @@ export default class %s extends Thunder {
     <name>StaticResource</name>
   </types>
   <types>
-    <members>GoBridge</members>
-    <members>GoBridgeTest</members>
-    <name>ApexClass</name>
-  </types>
-  <types>
-    <members>Thunder_Settings__c</members>
-    <name>CustomObject</name>
-  </types>
-  <types>
-    <members>go</members>
-    <members>thunder</members>
     <members>%s</members>
     <name>LightningComponentBundle</name>
   </types>`
