@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode"
 
+	salesforce "github.com/octoberswimmer/thunder/salesforce"
 	"golang.org/x/tools/go/packages"
 
 	desktop "github.com/ForceCLI/force/desktop"
@@ -38,11 +39,12 @@ var (
 	buildMutex      sync.RWMutex
 	session         *forcecli.Force
 	// deploy command flags
-	deployDir     string
-	deployTab     bool
-	deployWatch   bool
-	deployDebug   bool
-	deployAppOnly bool
+	deployDir        string
+	deployTab        bool
+	deployWatch      bool
+	deployDebug      bool
+	deployAppOnly    bool
+	deployThunderDev bool
 	// build command flags
 	buildDev    bool
 	buildOutput string
@@ -103,6 +105,7 @@ func init() {
 	deployCmd.Flags().BoolVarP(&deployWatch, "watch", "w", false, "Watch for changes and automatically redeploy WASM bundle")
 	deployCmd.Flags().BoolVar(&deployDebug, "debug", false, "Enable debug output")
 	deployCmd.Flags().BoolVar(&deployAppOnly, "app-only", false, "Deploy only the static resource (WASM bundle)")
+	deployCmd.Flags().BoolVar(&deployThunderDev, "thunder-dev", false, "Deploy unpackaged thunder dependencies instead of using the osgo package")
 	// build flags
 	buildCmd.Flags().BoolVarP(&buildDev, "dev", "d", false, "Build with development tags")
 	buildCmd.Flags().StringVarP(&buildOutput, "output", "o", "./build", "Output directory for build artifacts")
@@ -906,9 +909,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("serve directory %s is not package main", deployDir)
 	}
 
-	// Check for osgo package installation and install if needed
-	if err := ensureOsgoPackageInstalled(); err != nil {
-		return fmt.Errorf("failed to ensure osgo package is installed: %w", err)
+	// Check for osgo package installation and install if needed (unless using --thunder-dev)
+	if !deployThunderDev {
+		if err := ensureOsgoPackageInstalled(); err != nil {
+			return fmt.Errorf("failed to ensure osgo package is installed: %w", err)
+		}
 	}
 	// Build production WASM bundle
 	fmt.Printf("Building production WASM bundle in %s...\n", deployDir)
@@ -968,20 +973,58 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Note: GoBridge, Thunder_Settings__c, go and thunder LWCs are now provided by the osgo package
-	// So we don't need to deploy them anymore
+	// Deploy thunder dependencies if using --thunder-dev flag
+	if deployThunderDev {
+		// Apex classes
+		apexTemplates := []struct{ src, dst string }{
+			{"classes/GoBridge.cls", "classes/GoBridge.cls"},
+			{"classes/GoBridge.cls-meta.xml", "classes/GoBridge.cls-meta.xml"},
+			{"classes/GoBridgeTest.cls", "classes/GoBridgeTest.cls"},
+			{"classes/GoBridgeTest.cls-meta.xml", "classes/GoBridgeTest.cls-meta.xml"},
+		}
+		for _, t := range apexTemplates {
+			if data, err := salesforce.SalesforceMetadataFS.ReadFile(t.src); err == nil {
+				files[t.dst] = data
+			}
+		}
+
+		// Custom Objects (Thunder Settings)
+		objectTemplates := []struct{ src, dst string }{
+			{"objects/Thunder_Settings__c.object", "objects/Thunder_Settings__c.object"},
+		}
+		for _, t := range objectTemplates {
+			if data, err := salesforce.SalesforceMetadataFS.ReadFile(t.src); err == nil {
+				files[t.dst] = data
+			}
+		}
+		// LWC components (runtime and wrapper)
+		for _, comp := range []string{"go", "thunder"} {
+			base := "lwc/" + comp
+			entries, _ := salesforce.SalesforceMetadataFS.ReadDir(base)
+			for _, e := range entries {
+				if data, err := salesforce.SalesforceMetadataFS.ReadFile(base + "/" + e.Name()); err == nil {
+					files["lwc/"+comp+"/"+e.Name()] = data
+				}
+			}
+		}
+	}
+
 	// Generate LWC for the deployed app
 	appComp := lwcName
 	// JS wrapper for the app, importing the static resource
-	// Import thunder from the osgo namespace
-	js := fmt.Sprintf(`import Thunder from 'osgo/thunder';
+	// Import thunder from the appropriate namespace
+	thunderImport := "osgo/thunder"
+	if deployThunderDev {
+		thunderImport = "c/thunder"
+	}
+	js := fmt.Sprintf(`import Thunder from '%s';
 import APP_URL from '@salesforce/resourceUrl/%s';
 
 export default class %s extends Thunder {
 	connectedCallback() {
 		this.app = APP_URL + '/bundle.wasm';
 	}
-}`, staticResourceName, appClass)
+}`, thunderImport, staticResourceName, appClass)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
 	// JS meta
 	meta := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -1013,8 +1056,33 @@ export default class %s extends Thunder {
 		files[fmt.Sprintf("tabs/%s.tab-meta.xml", appComp)] = []byte(tabXml)
 	}
 	// Generate package.xml for the deployment
-	// Only deploy the app-specific components, not the osgo package components
-	packageTpl := `<?xml version="1.0" encoding="UTF-8"?>
+	var packageTpl string
+	if deployThunderDev {
+		// Include thunder dependencies when using --thunder-dev
+		packageTpl = `<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+  <types>
+    <members>%s</members>
+    <name>StaticResource</name>
+  </types>
+  <types>
+    <members>GoBridge</members>
+    <members>GoBridgeTest</members>
+    <name>ApexClass</name>
+  </types>
+  <types>
+    <members>Thunder_Settings__c</members>
+    <name>CustomObject</name>
+  </types>
+  <types>
+    <members>go</members>
+    <members>thunder</members>
+    <members>%s</members>
+    <name>LightningComponentBundle</name>
+  </types>`
+	} else {
+		// Only deploy the app-specific components when using osgo package
+		packageTpl = `<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
   <types>
     <members>%s</members>
@@ -1024,6 +1092,7 @@ export default class %s extends Thunder {
     <members>%s</members>
     <name>LightningComponentBundle</name>
   </types>`
+	}
 	if deployTab {
 		packageTpl += `
   <types>
