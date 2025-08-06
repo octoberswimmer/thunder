@@ -28,7 +28,7 @@ import (
 )
 
 // Build-time variable that can be overridden with -ldflags
-var osgoPackageVersionId = "04tKe000000xAZxIAM"
+var osgoPackageVersionId = "04tKe000000xAalIAE"
 
 // global state for serve command
 var (
@@ -792,8 +792,7 @@ func installOsgoPackage(force *forcecli.Force) error {
 		"SubscriberPackageVersionKey": osgoPackageVersionId,
 		"EnableRss":                   "false",
 		"NameConflictResolution":      "Block",
-		"SecurityType":                "None",
-		"UpgradeType":                 "Mixed",
+		"SecurityType":                "Full",
 	}
 
 	result, err := force.CreateToolingRecord("PackageInstallRequest", attrs)
