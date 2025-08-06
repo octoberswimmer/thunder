@@ -43,6 +43,11 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 	async init() {
 		this.initialized = true;
 		var divElement = this.template.querySelector('div');
+
+		// Clear recordId if we're in tab context (not quick action)
+		if (!this.isQuickAction()) {
+			delete globalThis.recordId;
+		}
 		// Expose REST methods to Go WASM
 		// get, post, patch, delete should call Apex @AuraEnabled proxy
 		globalThis.get = (url) => {
