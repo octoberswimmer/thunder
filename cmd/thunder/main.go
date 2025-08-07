@@ -45,6 +45,7 @@ var (
 	deployDebug      bool
 	deployAppOnly    bool
 	deployThunderDev bool
+	deployName       string
 	// build command flags
 	buildDev    bool
 	buildOutput string
@@ -106,6 +107,7 @@ func init() {
 	deployCmd.Flags().BoolVar(&deployDebug, "debug", false, "Enable debug output")
 	deployCmd.Flags().BoolVar(&deployAppOnly, "app-only", false, "Deploy only the static resource (WASM bundle)")
 	deployCmd.Flags().BoolVar(&deployThunderDev, "thunder-dev", false, "Deploy unpackaged thunder dependencies instead of using the osgo package")
+	deployCmd.Flags().StringVar(&deployName, "name", "", "Name for the app and tab (defaults to directory name)")
 	// build flags
 	buildCmd.Flags().BoolVarP(&buildDev, "dev", "d", false, "Build with development tags")
 	buildCmd.Flags().StringVarP(&buildOutput, "output", "o", "./build", "Output directory for build artifacts")
@@ -918,9 +920,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Build production WASM bundle
 	fmt.Printf("Building production WASM bundle in %s...\n", deployDir)
 	absDir, _ := filepath.Abs(deployDir)
-	rawName := filepath.Base(absDir)
-	staticResourceName := sanitizeStaticResourceName(rawName)
-	lwcName := sanitizeComponentName(rawName)
+
+	// Use --name flag if provided, otherwise use directory name
+	var baseName string
+	if deployName != "" {
+		baseName = deployName
+	} else {
+		baseName = filepath.Base(absDir)
+	}
+
+	staticResourceName := sanitizeStaticResourceName(baseName)
+	lwcName := sanitizeComponentName(baseName)
 	appClass := toPascalCase(lwcName)
 	buildDir, err := buildProdWASM(deployDir)
 	if err != nil {
@@ -1017,14 +1027,21 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if deployThunderDev {
 		thunderImport = "c/thunder"
 	}
+	// Use deployName for display if provided, otherwise use appClass
+	displayName := deployName
+	if displayName == "" {
+		displayName = appClass
+	}
+
 	js := fmt.Sprintf(`import Thunder from '%s';
 import APP_URL from '@salesforce/resourceUrl/%s';
 
 export default class %s extends Thunder {
 	connectedCallback() {
 		this.app = APP_URL + '/bundle.wasm';
+		this.appName = '%s';
 	}
-}`, thunderImport, staticResourceName, appClass)
+}`, thunderImport, staticResourceName, appClass, displayName)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
 	// JS meta
 	meta := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -1052,7 +1069,7 @@ export default class %s extends Thunder {
     <label>%s</label>
     <lwcComponent>%s</lwcComponent>
     <motif>Custom75: Default</motif>
-</CustomTab>`, appClass, appComp)
+</CustomTab>`, displayName, appComp)
 		files[fmt.Sprintf("tabs/%s.tab-meta.xml", appComp)] = []byte(tabXml)
 	}
 	// Generate package.xml for the deployment

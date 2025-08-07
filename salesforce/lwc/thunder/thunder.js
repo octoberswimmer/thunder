@@ -21,7 +21,7 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 	// URL of the WASM app to load
 	@api app;
 	// Label to display on the console tab when navigation is enabled
-	@api appName;
+	@api appName = 'Thunder App';
 	@wire(IsConsoleNavigation) isConsoleNavigation;
 
 	renderMode = "shadow";
