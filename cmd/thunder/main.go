@@ -29,7 +29,7 @@ import (
 )
 
 // Build-time variable that can be overridden with -ldflags
-var osgoPackageVersionId = "04tKe000000xAalIAE"
+var osgoPackageVersionId = "04tKe000000xAbKIAU"
 
 // global state for serve command
 var (

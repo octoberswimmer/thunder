@@ -9,6 +9,9 @@ import (
 	"github.com/octoberswimmer/masc"
 )
 
+// currentDiv stores the div element for the current Thunder instance
+var currentDiv js.Value
+
 // Run initializes a Thunder application for production deployment in Salesforce Lightning.
 // It registers the global "startWithDiv" JavaScript function that Lightning Web Components
 // call to launch the Go WASM application within a specific DOM element.
@@ -23,6 +26,8 @@ func Run(model masc.Model) {
 	// Register startWithDiv: thunder host calls this
 	js.Global().Set("startWithDiv", js.FuncOf(func(_ js.Value, args []js.Value) interface{} {
 		div := args[0]
+		// Store the div element for this instance
+		currentDiv = div
 		// Launch Masc program rendering into this div
 		go masc.NewProgram(
 			model,
@@ -32,4 +37,9 @@ func Run(model masc.Model) {
 	}))
 	// Keep Go runtime alive
 	select {}
+}
+
+// GetCurrentDiv returns the current div element for the Thunder instance
+func GetCurrentDiv() js.Value {
+	return currentDiv
 }

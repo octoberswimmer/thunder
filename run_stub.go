@@ -28,3 +28,9 @@ import "github.com/octoberswimmer/masc"
 func Run(model masc.Model) {
 	panic("thunder.Run is not supported outside the WASM environment")
 }
+
+// GetCurrentDiv returns the current div element for the Thunder instance
+// This is a stub function for non-WASM environments
+func GetCurrentDiv() interface{} {
+	panic("thunder.GetCurrentDiv is not supported outside the WASM environment")
+}

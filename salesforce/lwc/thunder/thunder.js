@@ -10,13 +10,23 @@ import Go from 'c/go';
 // Apex proxy for REST calls
 import callRest from '@salesforce/apex/GoBridge.callRest';
 
+// WeakMap to store instance-specific recordId associated with div elements
+const divRecordIdMap = new WeakMap();
+
 export default class Thunder extends NavigationMixin(LightningElement) {
+	_recordId;
+
 	@api set recordId(value) {
-		// Expose recordId from Lightning record page to Go WASM environment
-		globalThis.recordId = value;
+		// Store recordId as instance property
+		this._recordId = value;
+		// Update the WeakMap if we have a div element
+		const divElement = this.template.querySelector('div');
+		if (divElement && value) {
+			divRecordIdMap.set(divElement, value);
+		}
 	}
 	get recordId() {
-		return globalThis.recordId;
+		return this._recordId;
 	}
 	// URL of the WASM app to load
 	@api app;
@@ -44,9 +54,9 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 		this.initialized = true;
 		var divElement = this.template.querySelector('div');
 
-		// Clear recordId if we're in tab context (not quick action)
-		if (!this.isQuickAction()) {
-			delete globalThis.recordId;
+		// Store recordId in WeakMap if we have one (in case setter was called before div existed)
+		if (this._recordId && divElement) {
+			divRecordIdMap.set(divElement, this._recordId);
 		}
 		// Expose REST methods to Go WASM
 		// get, post, patch, delete should call Apex @AuraEnabled proxy
@@ -76,6 +86,9 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 		globalThis.thunderExit = () => this.exitApp();
 		globalThis.thunderExitToRecord = (recordId) => this.exitToRecord(recordId);
 		globalThis.thunderCloseModal = () => this.closeModal();
+
+		// Expose function to get recordId for a specific div
+		globalThis.getRecordIdForDiv = (div) => divRecordIdMap.get(div);
 
 		const resp = await fetch(this.app);
 		if (!resp.ok) {

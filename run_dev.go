@@ -9,6 +9,9 @@ import (
 	"github.com/octoberswimmer/masc"
 )
 
+// currentDiv stores the div element for the current Thunder instance
+var currentDiv js.Value
+
 // Run initializes a Thunder application for development mode with thunder serve.
 // In development builds (with -tags dev), this function directly renders the application
 // into the "app" div element that thunder serve provides in its HTML template.
@@ -23,9 +26,17 @@ func Run(model masc.Model) {
 	doc := js.Global().Get("document")
 	div := doc.Call("getElementById", "app")
 
+	// Store the div element for this instance
+	currentDiv = div
+
 	pgm := masc.NewProgram(model, masc.RenderTo(div))
 	_, err := pgm.Run()
 	if err != nil {
 		panic(err)
 	}
+}
+
+// GetCurrentDiv returns the current div element for the Thunder instance
+func GetCurrentDiv() js.Value {
+	return currentDiv
 }
