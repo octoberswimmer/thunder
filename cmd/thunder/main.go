@@ -697,6 +697,17 @@ func toPascalCase(name string) string {
 	return strings.Join(parts, "")
 }
 
+// toUpperSnakeCase converts a snake_case name to Upper_Snake_Case for tab names.
+func toUpperSnakeCase(name string) string {
+	parts := strings.Split(name, "_")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.Title(p)
+		}
+	}
+	return strings.Join(parts, "_")
+}
+
 // runBuild handles the build subcommand to compile the app to WebAssembly.
 func runBuild(cmd *cobra.Command, args []string) error {
 	// Determine app directory (optional positional argument)
@@ -921,14 +932,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Building production WASM bundle in %s...\n", deployDir)
 	absDir, _ := filepath.Abs(deployDir)
 
-	// Use --name flag if provided, otherwise use directory name
-	var baseName string
-	if deployName != "" {
-		baseName = deployName
-	} else {
-		baseName = filepath.Base(absDir)
-	}
-
+	// Always use directory name for file names to avoid conflicts
+	baseName := filepath.Base(absDir)
 	staticResourceName := sanitizeStaticResourceName(baseName)
 	lwcName := sanitizeComponentName(baseName)
 	appClass := toPascalCase(lwcName)
@@ -1027,10 +1032,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if deployThunderDev {
 		thunderImport = "c/thunder"
 	}
-	// Use deployName for display if provided, otherwise use appClass
-	displayName := deployName
-	if displayName == "" {
-		displayName = appClass
+	// Use deployName for appName if provided, otherwise use appClass
+	appName := deployName
+	if appName == "" {
+		appName = appClass
 	}
 
 	js := fmt.Sprintf(`import Thunder from '%s';
@@ -1041,7 +1046,7 @@ export default class %s extends Thunder {
 		this.app = APP_URL + '/bundle.wasm';
 		this.appName = '%s';
 	}
-}`, thunderImport, staticResourceName, appClass, displayName)
+}`, thunderImport, staticResourceName, appClass, appName)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
 	// JS meta
 	meta := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -1062,6 +1067,10 @@ export default class %s extends Thunder {
     </targetConfigs>
 </LightningComponentBundle>`, appClass)
 	files[fmt.Sprintf("lwc/%s/%s.js-meta.xml", appComp, appComp)] = []byte(meta)
+
+	// Calculate tab name for both tab generation and package.xml
+	tabName := toUpperSnakeCase(lwcName)
+
 	// If requested, generate a CustomTab for the deployed app
 	if deployTab {
 		tabXml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -1069,8 +1078,8 @@ export default class %s extends Thunder {
     <label>%s</label>
     <lwcComponent>%s</lwcComponent>
     <motif>Custom75: Default</motif>
-</CustomTab>`, displayName, appComp)
-		files[fmt.Sprintf("tabs/%s.tab-meta.xml", appComp)] = []byte(tabXml)
+</CustomTab>`, appName, appComp)
+		files[fmt.Sprintf("tabs/%s.tab-meta.xml", tabName)] = []byte(tabXml)
 	}
 	// Generate package.xml for the deployment
 	var packageTpl string
@@ -1122,7 +1131,7 @@ export default class %s extends Thunder {
 </Package>`
 	var pkg string
 	if deployTab {
-		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp, appComp)
+		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp, tabName)
 	} else {
 		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp)
 	}
