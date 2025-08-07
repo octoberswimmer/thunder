@@ -36,6 +36,11 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 
 	renderMode = "shadow";
 	initialized = false;
+	isLoading = true;
+
+	get appContainerClass() {
+		return this.isLoading ? 'slds-hide' : '';
+	}
 
 	renderedCallback() {
 		if (this.isConsoleNavigation && this.appName && !this.isQuickAction()) {
@@ -52,6 +57,7 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 
 	async init() {
 		this.initialized = true;
+		this.isLoading = true;
 		var divElement = this.template.querySelector('div');
 
 		// Store recordId in WeakMap if we have one (in case setter was called before div existed)
@@ -92,6 +98,7 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 
 		const resp = await fetch(this.app);
 		if (!resp.ok) {
+			this.isLoading = false;
 			const pre = document.createElement('pre');
 			pre.innerText = await resp.text();
 			divElement.appendChild(pre);
@@ -102,6 +109,7 @@ export default class Thunder extends NavigationMixin(LightningElement) {
 			go.run(result.instance);
 			await new Promise(resolve => setTimeout(resolve, 1000));
 			startWithDiv(divElement);
+			this.isLoading = false;
 		}
 	}
 

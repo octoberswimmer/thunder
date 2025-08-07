@@ -1,3 +1,6 @@
 <template>
-	<div lwc:dom="manual"></div>
+	<template if:true={isLoading}>
+		<lightning-spinner alternative-text="Loading" size="large"></lightning-spinner>
+	</template>
+	<div lwc:dom="manual" class={appContainerClass}></div>
 </template>
