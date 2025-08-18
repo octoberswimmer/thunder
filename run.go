@@ -28,11 +28,15 @@ func Run(model masc.Model) {
 		div := args[0]
 		// Store the div element for this instance
 		currentDiv = div
-		// Launch Masc program rendering into this div
-		go masc.NewProgram(
-			model,
-			masc.RenderTo(div),
-		).Run()
+		// Launch Masc program rendering into this div with panic handler
+		go func() {
+			defer handlePanic()
+			masc.NewProgram(
+				model,
+				masc.RenderTo(div),
+				masc.WithoutCatchPanics(),
+			).Run()
+		}()
 		return nil
 	}))
 	// Keep Go runtime alive

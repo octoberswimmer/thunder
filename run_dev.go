@@ -29,7 +29,10 @@ func Run(model masc.Model) {
 	// Store the div element for this instance
 	currentDiv = div
 
-	pgm := masc.NewProgram(model, masc.RenderTo(div))
+	// Set up panic recovery
+	defer handlePanic()
+
+	pgm := masc.NewProgram(model, masc.RenderTo(div), masc.WithoutCatchPanics())
 	_, err := pgm.Run()
 	if err != nil {
 		panic(err)
