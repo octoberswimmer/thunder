@@ -7,10 +7,9 @@ import (
 	"syscall/js"
 
 	"github.com/octoberswimmer/masc"
+	"github.com/octoberswimmer/thunder/internal/panichandler"
+	"github.com/octoberswimmer/thunder/internal/runtime"
 )
-
-// currentDiv stores the div element for the current Thunder instance
-var currentDiv js.Value
 
 // Run initializes a Thunder application for production deployment in Salesforce Lightning.
 // It registers the global "startWithDiv" JavaScript function that Lightning Web Components
@@ -27,12 +26,16 @@ func Run(model masc.Model) {
 	js.Global().Set("startWithDiv", js.FuncOf(func(_ js.Value, args []js.Value) interface{} {
 		div := args[0]
 		// Store the div element for this instance
-		currentDiv = div
-		// Launch Masc program rendering into this div
-		go masc.NewProgram(
-			model,
-			masc.RenderTo(div),
-		).Run()
+		runtime.SetCurrentDiv(div)
+		// Launch Masc program rendering into this div with panic handler
+		go func() {
+			defer panichandler.HandlePanic()
+			masc.NewProgram(
+				model,
+				masc.RenderTo(div),
+				masc.WithoutCatchPanics(),
+			).Run()
+		}()
 		return nil
 	}))
 	// Keep Go runtime alive
@@ -41,5 +44,5 @@ func Run(model masc.Model) {
 
 // GetCurrentDiv returns the current div element for the Thunder instance
 func GetCurrentDiv() js.Value {
-	return currentDiv
+	return runtime.GetCurrentDiv()
 }

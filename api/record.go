@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"syscall/js"
 
-	"github.com/octoberswimmer/thunder"
+	"github.com/octoberswimmer/thunder/internal/runtime"
 )
 
 func RecordId() (string, error) {
 	// Get the current div element for this Thunder instance
-	div := thunder.GetCurrentDiv()
+	div := runtime.GetCurrentDiv()
 	if div.IsUndefined() {
 		return "", fmt.Errorf("thunder instance not initialized")
 	}

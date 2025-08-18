@@ -7,10 +7,9 @@ import (
 	"syscall/js"
 
 	"github.com/octoberswimmer/masc"
+	"github.com/octoberswimmer/thunder/internal/panichandler"
+	"github.com/octoberswimmer/thunder/internal/runtime"
 )
-
-// currentDiv stores the div element for the current Thunder instance
-var currentDiv js.Value
 
 // Run initializes a Thunder application for development mode with thunder serve.
 // In development builds (with -tags dev), this function directly renders the application
@@ -27,9 +26,12 @@ func Run(model masc.Model) {
 	div := doc.Call("getElementById", "app")
 
 	// Store the div element for this instance
-	currentDiv = div
+	runtime.SetCurrentDiv(div)
 
-	pgm := masc.NewProgram(model, masc.RenderTo(div))
+	// Set up panic recovery
+	defer panichandler.HandlePanic()
+
+	pgm := masc.NewProgram(model, masc.RenderTo(div), masc.WithoutCatchPanics())
 	_, err := pgm.Run()
 	if err != nil {
 		panic(err)
@@ -38,5 +40,5 @@ func Run(model masc.Model) {
 
 // GetCurrentDiv returns the current div element for the Thunder instance
 func GetCurrentDiv() js.Value {
-	return currentDiv
+	return runtime.GetCurrentDiv()
 }
