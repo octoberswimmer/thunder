@@ -69,53 +69,61 @@ func (m *panicModel) Render(send func(masc.Msg)) masc.ComponentOrHTML {
 	)
 }
 
-// HandlePanic recovers from a panic and displays it in a modal
-func HandlePanic() {
-	if r := recover(); r != nil {
-		panicMessage := fmt.Sprintf("%v", r)
-		stackTrace := string(debug.Stack())
+// ShowPanicModal displays a panic modal with the given panic value and stack trace
+func ShowPanicModal(panicValue interface{}) {
+	js.Global().Get("console").Call("log", "ShowPanicModal called with:", panicValue)
+	panicMessage := fmt.Sprintf("%v", panicValue)
+	stackTrace := string(debug.Stack())
 
-		// Get the document
-		doc := js.Global().Get("document")
-		body := doc.Get("body")
+	// Get the document
+	doc := js.Global().Get("document")
+	body := doc.Get("body")
 
-		// Clear the existing content
-		div := runtime.GetCurrentDiv()
-		if !div.IsUndefined() && !div.IsNull() {
-			// Clear existing content by removing all children
-			for div.Get("firstChild").Truthy() {
-				div.Call("removeChild", div.Get("firstChild"))
+	// Clear the existing content
+	div := runtime.GetCurrentDiv()
+	if !div.IsUndefined() && !div.IsNull() {
+		// Clear existing content by removing all children
+		for div.Get("firstChild").Truthy() {
+			div.Call("removeChild", div.Get("firstChild"))
+		}
+	}
+
+	// Always create a new div for the error modal to avoid conflicts
+	errorDiv := doc.Call("createElement", "div")
+	errorDiv.Set("id", "thunder-panic-modal")
+	errorDiv.Set("style", "position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;")
+	body.Call("appendChild", errorDiv)
+
+	model := &panicModel{
+		panicMessage: panicMessage,
+		stackTrace:   stackTrace,
+	}
+
+	// Run the panic display program
+	go func() {
+		defer func() {
+			// Catch any panics in the panic handler itself
+			if r2 := recover(); r2 != nil {
+				// Last resort: just show an alert
+				js.Global().Call("alert", fmt.Sprintf("Application Error: %v\\n\\nPanic handler also failed: %v", panicValue, r2))
 			}
-		}
-
-		// Always create a new div for the error modal to avoid conflicts
-		errorDiv := doc.Call("createElement", "div")
-		errorDiv.Set("id", "thunder-panic-modal")
-		errorDiv.Set("style", "position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;")
-		body.Call("appendChild", errorDiv)
-
-		model := &panicModel{
-			panicMessage: panicMessage,
-			stackTrace:   stackTrace,
-		}
-
-		// Run the panic display program
-		go func() {
-			defer func() {
-				// Catch any panics in the panic handler itself
-				if r2 := recover(); r2 != nil {
-					// Last resort: just show an alert
-					js.Global().Call("alert", fmt.Sprintf("Application Error: %v\n\nPanic handler also failed: %v", r, r2))
-				}
-			}()
-
-			masc.NewProgram(
-				model,
-				masc.RenderTo(errorDiv),
-			).Run()
 		}()
 
-		// Keep the program alive
-		select {}
+		masc.NewProgram(
+			model,
+			masc.RenderTo(errorDiv),
+		).Run()
+	}()
+
+	// Keep the program alive
+	select {}
+}
+
+// HandlePanic recovers from a panic and displays it in a modal
+func HandlePanic() {
+	js.Global().Get("console").Call("log", "HandlePanic called")
+	if r := recover(); r != nil {
+		js.Global().Get("console").Call("log", "HandlePanic recovered panic:", r)
+		ShowPanicModal(r)
 	}
 }

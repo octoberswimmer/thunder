@@ -31,7 +31,13 @@ func Run(model masc.Model) {
 	// Set up panic recovery
 	defer panichandler.HandlePanic()
 
-	pgm := masc.NewProgram(model, masc.RenderTo(div), masc.WithoutCatchPanics())
+	// Create a panic handler that calls Thunder's panic handler
+	thunderPanicHandler := func(panicValue interface{}) {
+		js.Global().Get("console").Call("log", "Thunder panic handler called with:", panicValue)
+		panichandler.ShowPanicModal(panicValue)
+	}
+
+	pgm := masc.NewProgram(model, masc.RenderTo(div), masc.WithPanicHandler(thunderPanicHandler))
 	_, err := pgm.Run()
 	if err != nil {
 		panic(err)

@@ -30,10 +30,17 @@ func Run(model masc.Model) {
 		// Launch Masc program rendering into this div with panic handler
 		go func() {
 			defer panichandler.HandlePanic()
+
+			// Create a panic handler that calls Thunder's panic handler
+			thunderPanicHandler := func(panicValue interface{}) {
+				js.Global().Get("console").Call("log", "Thunder panic handler called with:", panicValue)
+				panichandler.ShowPanicModal(panicValue)
+			}
+
 			masc.NewProgram(
 				model,
 				masc.RenderTo(div),
-				masc.WithoutCatchPanics(),
+				masc.WithPanicHandler(thunderPanicHandler),
 			).Run()
 		}()
 		return nil
