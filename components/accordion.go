@@ -74,15 +74,14 @@ func renderAccordionSection(section AccordionSection, onToggle func(string)) mas
 							}
 						}),
 					),
-					// Icon span with chevron
+					// Icon for expand/collapse - fallback to Unicode symbols
 					elem.Span(
 						masc.Markup(
 							masc.Class("slds-accordion__summary-action-icon", "slds-button__icon", "slds-button__icon_left"),
 							masc.Property("aria-hidden", "true"),
 						),
-						// Use text-based chevron - render down arrow if expanded
+						// Use Unicode chevron symbols - more reliable than SVG
 						masc.If(section.Expanded, masc.Text("▼")),
-						// Use text-based chevron - render right arrow if not expanded
 						masc.If(!section.Expanded, masc.Text("▶")),
 					),
 					// Title text
