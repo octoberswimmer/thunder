@@ -204,6 +204,31 @@ private class GoBridgeTest {
 	}
 
 	@isTest
+	static void should_handle_aggregate_query_without_cursor() {
+		List<Account> aggregateAccounts = new List<Account>();
+		for (Integer i = 0; i < 3; i++) {
+			aggregateAccounts.add(new Account(Name = 'Aggregate Query ' + i));
+		}
+		insert aggregateAccounts;
+
+		String soql = 'SELECT COUNT(Id) totalCount FROM Account WHERE Name LIKE \'Aggregate Query %\'';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+		String url = '/services/data/v58.0/query?q=' + soqlEnc;
+
+		String jsonResp = GoBridge.callRest('GET', url, null);
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(jsonResp);
+
+		System.assertEquals(true, (Boolean)result.get('done'), 'Aggregate queries should complete in a single page');
+		System.assertEquals(false, result.containsKey('nextRecordsUrl'), 'Aggregate queries should not include a nextRecordsUrl');
+
+		List<Object> records = (List<Object>)result.get('records');
+		System.assertEquals(1, records.size(), 'Aggregate queries should return one aggregate row');
+		Map<String, Object> aggregateRow = (Map<String, Object>)records[0];
+		Decimal countValue = (Decimal)aggregateRow.get('totalCount');
+		System.assertEquals(3, countValue.intValue(), 'Aggregate count should match inserted rows');
+	}
+
+	@isTest
 	static void should_handle_composite_request_errors() {
 		String url = '/services/data/v58.0/composite';
 		String body = '{' + '"compositeRequest": [' +

@@ -57,6 +57,72 @@ public with sharing class GoBridge {
 		return start;
 	}
 
+	private static String stripStringLiterals(String input) {
+		if (String.isEmpty(input)) {
+			return '';
+		}
+		Boolean inQuote = false;
+		String sanitized = '';
+		for (Integer i = 0; i < input.length(); i++) {
+			String ch = input.substring(i, i + 1);
+			if (ch == '\'') {
+				if (inQuote &&
+					i + 1 < input.length() &&
+					input.substring(i + 1, i + 2) == '\'') {
+					i++;
+					continue;
+				}
+				inQuote = !inQuote;
+				continue;
+			}
+			if (!inQuote) {
+				sanitized += ch;
+			}
+		}
+		return sanitized;
+	}
+
+	private static Boolean isAggregateQuery(String soql) {
+		String soqlLower = soql != null ? soql.toLowerCase() : '';
+		String sanitized = stripStringLiterals(soqlLower);
+		Integer fromIdx = sanitized.indexOf(' from');
+		if (fromIdx < 0) {
+			fromIdx = sanitized.length();
+		}
+		String selectClause = sanitized.substring(0, fromIdx);
+		List<String> aggregateTokens = new List<String>{
+			'count(',
+			'count_distinct(',
+			'sum(',
+			'avg(',
+			'min(',
+			'max('
+		};
+		for (String token : aggregateTokens) {
+			if (selectClause.contains(token)) {
+				return true;
+			}
+		}
+		if (sanitized.contains(' group by ') ||
+			sanitized.contains(' with rollup') ||
+			sanitized.contains(' with cube') ||
+			sanitized.contains(' having ')
+		) {
+			return true;
+		}
+		return false;
+	}
+
+	private static String handleAggregateQuery(String soql) {
+		List<SObject> records = Database.query(soql);
+		Map<String, Object> result = new Map<String, Object>{
+			'totalSize' => records.size(),
+			'done' => true,
+			'records' => records
+		};
+		return JSON.serialize(result);
+	}
+
 	@AuraEnabled
 	public static String callRest(String method, String url, String body) {
 		// Dispatch to appropriate handler based on request type
@@ -124,6 +190,10 @@ public with sharing class GoBridge {
 			// Initial page with q=<SOQL>
 			String soqlEnc = qs.substring(2);
 			String soql = EncodingUtil.urlDecode(soqlEnc, 'UTF-8');
+
+			if (isAggregateQuery(soql)) {
+				return handleAggregateQuery(soql);
+			}
 
 			start = 0;
 
