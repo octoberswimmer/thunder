@@ -1056,6 +1056,7 @@ export default class %s extends Thunder {
     <masterLabel>%s</masterLabel>
     <targets>
         <target>lightning__AppPage</target>
+        <target>lightning__HomePage</target>
         <target>lightning__RecordAction</target>
         <target>lightning__RecordPage</target>
         <target>lightning__Tab</target>
