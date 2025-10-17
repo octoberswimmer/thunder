@@ -4,7 +4,7 @@ go 1.23.6
 
 toolchain go1.24.2
 
-require github.com/octoberswimmer/masc v0.5.0 // SLDS components
+require github.com/octoberswimmer/masc v0.6.1 // SLDS components
 
 require (
 	github.com/ForceCLI/force v1.0.9

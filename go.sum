@@ -38,8 +38,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/mitchellh/go-homedir v1.1.0 h1:lukF9ziXFxDFPkA1vsr5zpc1XuPDn/wFntq5mG+4E0Y=
 github.com/mitchellh/go-homedir v1.1.0/go.mod h1:SfyaCUpYCn1Vlf4IUYiD9fPX4A5wJrkLzIz1N1q0pr0=
-github.com/octoberswimmer/masc v0.5.0 h1:g3kOS+yW3inhZ5atgFQNb5sQsJM0K4AdV64KBuAfQJs=
-github.com/octoberswimmer/masc v0.5.0/go.mod h1:sPVvq++7sTVXhZ6//R/xdBqI90w/StI+qS0TMnZAU1c=
+github.com/octoberswimmer/masc v0.6.1 h1:HNY4qosd4iLHbU5vzVlFQMgcwoMdhkiBS+poxTb71FI=
+github.com/octoberswimmer/masc v0.6.1/go.mod h1:sPVvq++7sTVXhZ6//R/xdBqI90w/StI+qS0TMnZAU1c=
 github.com/onsi/ginkgo v1.12.0 h1:Iw5WCbBcaAAd0fpRb1c9r5YCylv4XDoCSigm1zLevwU=
 github.com/onsi/ginkgo v1.12.0/go.mod h1:oUhWkIvk5aDxtKvDDuw8gItl8pKl42LzjC9KZE0HfGg=
 github.com/onsi/ginkgo/v2 v2.22.2 h1:/3X8Panh8/WwhU/3Ssa6rCKqPLuAkVY2I0RoyDLySlU=
