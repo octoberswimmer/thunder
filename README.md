@@ -86,6 +86,13 @@ Thunder provides a comprehensive set of SLDS-styled components for building Ligh
 - **`Container`**: Basic layout wrapper to avoid direct element usage
 - **`Spacer`**: Flexible spacing container with margin/padding options
 - **`MarginTop`**, **`MarginBottom`**, **`PaddingHorizontal`**, etc.: Semantic spacing components
+- **`Resizeable`**: Wraps content and invokes a callback whenever the browser window resizes. The callback receives a `*masc.Event` with `width` and `height` properties so applications can react to layout changes (for example, adjusting breakpoints).
+  ```go
+  components.Resizeable(func(evt *masc.Event) {
+      width := evt.Get("width").Int()
+      send(viewportChangedMsg{Width: width})
+  }, renderChart())
+  ```
 
 ### Data Components
 - **`DataTable`**: Feature-rich data tables with sorting and actions
