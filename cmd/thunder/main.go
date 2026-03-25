@@ -123,6 +123,28 @@ func main() {
 	}
 }
 
+func generateAppWrapperJS(thunderImport, staticResourceName, appClass, appName string) string {
+	return fmt.Sprintf(`import { api } from 'lwc';
+import Thunder from '%s';
+import APP_URL from '@salesforce/resourceUrl/%s';
+
+export default class %s extends Thunder {
+	@api
+	get recordId() {
+		return super.recordId;
+	}
+
+	set recordId(value) {
+		super.recordId = value;
+	}
+
+	connectedCallback() {
+		this.app = APP_URL + '/bundle.wasm';
+		this.appName = '%s';
+	}
+}`, thunderImport, staticResourceName, appClass, appName)
+}
+
 // buildWASM compiles the Go app in appDir to WebAssembly and prepares assets.
 func buildWASM(appDir string) (string, error) {
 	// create temporary build directory
@@ -1038,15 +1060,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		appName = appClass
 	}
 
-	js := fmt.Sprintf(`import Thunder from '%s';
-import APP_URL from '@salesforce/resourceUrl/%s';
-
-export default class %s extends Thunder {
-	connectedCallback() {
-		this.app = APP_URL + '/bundle.wasm';
-		this.appName = '%s';
-	}
-}`, thunderImport, staticResourceName, appClass, appName)
+	js := generateAppWrapperJS(thunderImport, staticResourceName, appClass, appName)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
 	// JS meta
 	meta := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>

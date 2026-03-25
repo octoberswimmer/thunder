@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -114,5 +115,37 @@ func Test_zipBundle_creates_zip_with_bundleWasm(t *testing.T) {
 	}
 	if !bytes.Equal(content, data) {
 		t.Errorf("zipped content mismatch: expected %q, got %q", data, content)
+	}
+}
+
+func Test_generateAppWrapperJS_usesPackagedThunderImportAndRecordIdPassthrough(t *testing.T) {
+	js := generateAppWrapperJS("osgo/thunder", "patientsatisfactioncharts", "PatientSatisfactionCharts", "PatientSatisfactionCharts")
+
+	expectedSnippets := []string{
+		"import { api } from 'lwc';",
+		"import Thunder from 'osgo/thunder';",
+		"import APP_URL from '@salesforce/resourceUrl/patientsatisfactioncharts';",
+		"export default class PatientSatisfactionCharts extends Thunder {",
+		"@api",
+		"get recordId() {",
+		"return super.recordId;",
+		"set recordId(value) {",
+		"super.recordId = value;",
+		"this.app = APP_URL + '/bundle.wasm';",
+		"this.appName = 'PatientSatisfactionCharts';",
+	}
+
+	for _, snippet := range expectedSnippets {
+		if !strings.Contains(js, snippet) {
+			t.Fatalf("generated wrapper missing snippet %q\nGenerated JS:\n%s", snippet, js)
+		}
+	}
+}
+
+func Test_generateAppWrapperJS_usesThunderDevImportWhenRequested(t *testing.T) {
+	js := generateAppWrapperJS("c/thunder", "patientsatisfactioncharts", "PatientSatisfactionCharts", "PatientSatisfactionCharts")
+
+	if !strings.Contains(js, "import Thunder from 'c/thunder';") {
+		t.Fatalf("generated wrapper should import c/thunder in thunder-dev mode\nGenerated JS:\n%s", js)
 	}
 }
