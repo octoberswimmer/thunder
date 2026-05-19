@@ -373,3 +373,14 @@ API REST requests (via `/services/`) are automatically proxied through your acti
 - With `--watch`, monitors Go source files and automatically redeploys on changes for rapid development cycles.
 - With `--app-only`, deploys only the static resource containing the WASM bundle. This is useful for production deployments where the supporting metadata (LWC components, Apex classes) are already deployed.
 - All deployments use `rollbackOnError: true` and skip test execution for faster deployment to production.
+
+#### Bundle size optimization
+Salesforce limits individual static resources to 5 MB. Production builds (`thunder build`, `thunder deploy`) apply several optimizations to keep the bundle small:
+
+- Compiled with `-trimpath -ldflags="-s -w"` to strip the symbol table, DWARF, and source-path information.
+- Zipped at `flate.BestCompression` for the static resource payload.
+- Optionally post-processed with [`wasm-opt`](https://github.com/WebAssembly/binaryen) `-Oz` when found on `PATH`. Install Binaryen (`brew install binaryen`, `apt install binaryen`, etc.) to enable; the build skips it with a note when missing.
+
+If you are still over 5 MB, additional things worth trying:
+- Audit imports — large dependencies (e.g. heavy JSON schemas, embedded assets, reflection-heavy libraries) can dominate the bundle.
+- Move embedded data out of the WASM and into a separate static resource fetched at runtime.

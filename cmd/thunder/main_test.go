@@ -103,6 +103,9 @@ func Test_zipBundle_creates_zip_with_bundleWasm(t *testing.T) {
 	if f.Name != "bundle.wasm" {
 		t.Errorf("expected file name bundle.wasm, got %s", f.Name)
 	}
+	if f.Method != zip.Deflate {
+		t.Errorf("expected compression method Deflate, got %d", f.Method)
+	}
 	rc, err := f.Open()
 	if err != nil {
 		t.Fatalf("failed to open zipped file: %v", err)
@@ -114,5 +117,44 @@ func Test_zipBundle_creates_zip_with_bundleWasm(t *testing.T) {
 	}
 	if !bytes.Equal(content, data) {
 		t.Errorf("zipped content mismatch: expected %q, got %q", data, content)
+	}
+}
+
+// Test_zipBundle_compresses_highly_compressible_data verifies that zipBundle
+// actually compresses content (regression test for using flate.BestCompression).
+func Test_zipBundle_compresses_highly_compressible_data(t *testing.T) {
+	// 64 KiB of zeros — should compress to a tiny fraction of original size.
+	data := make([]byte, 64*1024)
+	zipData, err := zipBundle(data)
+	if err != nil {
+		t.Fatalf("zipBundle returned error: %v", err)
+	}
+	// Even with zip overhead, the result should be far smaller than the input
+	// if compression is actually engaged.
+	if len(zipData) >= len(data)/4 {
+		t.Errorf("zipBundle did not compress highly-compressible data: input %d bytes, output %d bytes", len(data), len(zipData))
+	}
+}
+
+// Test_optimizeWASM_missing_binary_is_noop ensures optimizeWASM does not panic
+// or modify the input file when wasm-opt is unavailable.
+func Test_optimizeWASM_missing_binary_is_noop(t *testing.T) {
+	// Point PATH at an empty directory so wasm-opt cannot be found.
+	emptyDir := t.TempDir()
+	t.Setenv("PATH", emptyDir)
+
+	dir := t.TempDir()
+	wasm := filepath.Join(dir, "bundle.wasm")
+	data := []byte("\x00asm\x01\x00\x00\x00") // minimal wasm header bytes
+	if err := os.WriteFile(wasm, data, 0644); err != nil {
+		t.Fatalf("writing wasm: %v", err)
+	}
+	optimizeWASM(wasm) // must not panic
+	got, err := os.ReadFile(wasm)
+	if err != nil {
+		t.Fatalf("reading wasm after optimizeWASM: %v", err)
+	}
+	if !bytes.Equal(got, data) {
+		t.Errorf("optimizeWASM mutated bundle when wasm-opt was missing")
 	}
 }

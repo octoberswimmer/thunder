@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1257,6 +1258,9 @@ func redeployWASM(appDir, staticResourceName string) error {
 }
 
 // buildProdWASM compiles the Go app in appDir to WebAssembly for production.
+// It strips debug symbols (-s -w) and trims source paths (-trimpath) to keep
+// the bundle small enough to fit Salesforce's 5MB static-resource limit, and
+// optionally post-processes the output with wasm-opt -Oz when available.
 func buildProdWASM(appDir string) (string, error) {
 	// create temporary build directory
 	buildDir, err := os.MkdirTemp("", "thunder-deploy-*")
@@ -1264,7 +1268,7 @@ func buildProdWASM(appDir string) (string, error) {
 		return "", err
 	}
 	outWasm := filepath.Join(buildDir, "bundle.wasm")
-	cmd := exec.Command("go", "build", "-o", outWasm)
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", outWasm)
 
 	// Set up environment with smart GOWORK handling
 	env := append(os.Environ(), "GOOS=js", "GOARCH=wasm")
@@ -1284,13 +1288,54 @@ func buildProdWASM(appDir string) (string, error) {
 	if err := cmd.Run(); err != nil {
 		return "", err
 	}
+
+	optimizeWASM(outWasm)
 	return buildDir, nil
 }
 
+// optimizeWASM runs wasm-opt -Oz on the given file when wasm-opt is found on
+// PATH, replacing the file in place on success. Failures are logged but
+// non-fatal — the un-optimized bundle remains usable.
+func optimizeWASM(wasmPath string) {
+	bin, err := exec.LookPath("wasm-opt")
+	if err != nil {
+		fmt.Println("Note: wasm-opt not found on PATH; skipping post-optimization (install Binaryen for further size reduction).")
+		return
+	}
+	before, statErr := os.Stat(wasmPath)
+	tmpOut := wasmPath + ".opt"
+	// Enable the wasm features Go's compiler emits. --all-features is broad
+	// but safe and avoids breakage as the Go toolchain adopts new features.
+	cmd := exec.Command(bin, "-Oz", "--all-features", wasmPath, "-o", tmpOut)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	fmt.Printf("Running %s -Oz on bundle.wasm...\n", bin)
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: wasm-opt failed (%v); using unoptimized bundle\n", err)
+		os.Remove(tmpOut)
+		return
+	}
+	if err := os.Rename(tmpOut, wasmPath); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not replace bundle with optimized output (%v); using unoptimized bundle\n", err)
+		os.Remove(tmpOut)
+		return
+	}
+	if statErr == nil {
+		if after, err := os.Stat(wasmPath); err == nil {
+			fmt.Printf("wasm-opt: %d -> %d bytes\n", before.Size(), after.Size())
+		}
+	}
+}
+
 // zipBundle compresses the WebAssembly binary into a zip archive for StaticResource deployment.
+// It uses flate.BestCompression to squeeze the result as close to Salesforce's 5MB
+// per-static-resource limit as possible.
 func zipBundle(wasmData []byte) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	zw := zip.NewWriter(buf)
+	zw.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
+		return flate.NewWriter(out, flate.BestCompression)
+	})
 	w, err := zw.Create("bundle.wasm")
 	if err != nil {
 		return nil, err
