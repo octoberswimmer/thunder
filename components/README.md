@@ -90,9 +90,33 @@ Render an SLDS styled date picker with a label.
 ```go
 datepicker := components.Datepicker(
     "Date",        // label
-    value,         // selected date in YYYY-MM-DD format
-    func(e *masc.Event) { /* handler when date changes */ },
+    value,         // selected date as time.Time (zero value for empty)
+    func(t time.Time) { /* handler when date changes */ },
 )
+```
+
+### AlignedDatepicker
+A `Datepicker` that vertically aligns with adjacent labeled form controls (such
+as `AlignedButton`). An empty label still reserves the label row so the control
+lines up. The selectable range is bounded by `min` and `max`; pass the zero
+time for either to leave that bound open.
+
+```go
+datepicker := components.AlignedDatepicker(
+    "Week Ending",   // label ("" renders an aligned, empty label slot)
+    value,           // selected date as time.Time
+    time.Time{},     // min (zero = unbounded)
+    max,             // max (zero = unbounded)
+    func(t time.Time) { /* handler when date changes */ },
+)
+```
+
+### AlignedField
+Wrap arbitrary content so it vertically aligns with labeled form fields by
+reserving an empty label slot above it. `AlignedButton` is built on top of this.
+
+```go
+field := components.AlignedField(myControl)
 ```
 
 ### Stencil

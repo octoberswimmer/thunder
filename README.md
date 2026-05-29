@@ -62,6 +62,7 @@ Thunder provides a comprehensive set of SLDS-styled components for building Ligh
 - **`Textarea`**: Multi-line text input for longer content (e.g., addresses, descriptions)
 - **`Select`**: Dropdown selection with picklist options
 - **`Datepicker`**: Date input with SLDS calendar styling (uses `time.Time` values)
+- **`AlignedDatepicker`**: `Datepicker` that aligns with labeled siblings and supports min/max bounds
 - **`Timepicker`**: Time input with 24-hour format (HH:MM)
 - **`Checkbox`**: Boolean input with proper labeling
 - **`RadioGroup`**: Multiple choice selection with radio buttons in form layout

@@ -34,10 +34,11 @@ func Button(label string, variant ButtonVariant, onClick func(*masc.Event)) masc
 	)
 }
 
-// AlignedButton renders a button that aligns with form fields that have labels.
-// It adds an empty label space above the button to match the vertical alignment
-// of adjacent ValidatedTextInput and other labeled form components.
-func AlignedButton(label string, variant ButtonVariant, onClick func(*masc.Event)) masc.ComponentOrHTML {
+// AlignedField wraps arbitrary content so it vertically aligns with adjacent
+// labeled form fields. It reserves an empty label slot above the content,
+// matching the height that components like Select and ValidatedTextInput give
+// to their labels, so controls without their own label still line up.
+func AlignedField(content masc.ComponentOrHTML) masc.ComponentOrHTML {
 	return elem.Div(
 		masc.Markup(
 			masc.Class("slds-form-element"),
@@ -53,9 +54,16 @@ func AlignedButton(label string, variant ButtonVariant, onClick func(*masc.Event
 			masc.Markup(
 				masc.Class("slds-form-element__control"),
 			),
-			Button(label, variant, onClick),
+			content,
 		),
 	)
+}
+
+// AlignedButton renders a button that aligns with form fields that have labels.
+// It adds an empty label space above the button to match the vertical alignment
+// of adjacent ValidatedTextInput and other labeled form components.
+func AlignedButton(label string, variant ButtonVariant, onClick func(*masc.Event)) masc.ComponentOrHTML {
+	return AlignedField(Button(label, variant, onClick))
 }
 
 // LoadingButton creates a button with a loading spinner and disabled state.
