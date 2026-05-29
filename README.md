@@ -82,6 +82,7 @@ Thunder provides a comprehensive set of SLDS-styled components for building Ligh
 - **`Card`**: Content containers with headers and proper spacing
 - **`Page`** & **`PageHeader`**: Page-level layout with consistent styling
 - **`Modal`**: Dialog overlays for secondary workflows
+- **`LargeModal`**: `Modal` at the SLDS large width for wide content (e.g. multi-column tables)
 - **`ModalWithClose`**: Modal with built-in close button and enhanced functionality
 - **`Form`**: Semantic form wrapper with proper SLDS styling
 - **`Container`**: Basic layout wrapper to avoid direct element usage

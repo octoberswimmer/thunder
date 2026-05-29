@@ -11,6 +11,19 @@ import (
 // component in masc.If or similar conditional logic.
 // title is displayed in the header; content is rendered in the modal body.
 func Modal(title string, children ...masc.MarkupOrChild) masc.ComponentOrHTML {
+	return modal(title, "", children...)
+}
+
+// LargeModal renders a Modal at the SLDS "large" width, giving wide content
+// such as multi-column tables room to lay out without horizontal scrolling.
+func LargeModal(title string, children ...masc.MarkupOrChild) masc.ComponentOrHTML {
+	return modal(title, "slds-modal_large", children...)
+}
+
+// modal is the shared implementation behind Modal and LargeModal. sizeClass is
+// an optional SLDS size modifier (e.g. "slds-modal_large") applied to the modal
+// wrapper; an empty string yields the default width.
+func modal(title, sizeClass string, children ...masc.MarkupOrChild) masc.ComponentOrHTML {
 	// Split children into body (first) and footer (rest)
 	var bodyChildren, footerChildren []masc.MarkupOrChild
 	if len(children) > 0 {
@@ -57,9 +70,13 @@ func Modal(title string, children ...masc.MarkupOrChild) masc.ComponentOrHTML {
 		)
 	}
 	// Modal wrapper
+	modalClasses := []string{"slds-modal", "slds-fade-in-open"}
+	if sizeClass != "" {
+		modalClasses = append(modalClasses, sizeClass)
+	}
 	modal := elem.Div(
 		masc.Markup(
-			masc.Class("slds-modal", "slds-fade-in-open"),
+			masc.Class(modalClasses...),
 			masc.Attribute("role", "dialog"),
 			masc.Property("aria-modal", true),
 		),
