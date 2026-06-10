@@ -24,6 +24,22 @@ func (r Record) StringValue(path string) (string, error) {
 	return s, nil
 }
 
+// Children returns the records of a child-relationship subquery (e.g.
+// "Clinic__r" from "(SELECT ... FROM Clinic__r)") as typed Records, so the
+// caller can read each with StringValue/Value. It returns nil when the
+// relationship is absent or empty.
+func (r Record) Children(relationship string) []Record {
+	rows, ok := r.Fields[relationship].([]forcequery.Record)
+	if !ok {
+		return nil
+	}
+	out := make([]Record, len(rows))
+	for i, rec := range rows {
+		out[i] = Record{rec}
+	}
+	return out
+}
+
 // Value evaluates the given expression path against the record and returns the value.
 func (r Record) Value(path string) (interface{}, error) {
 	env := r.toEnv()

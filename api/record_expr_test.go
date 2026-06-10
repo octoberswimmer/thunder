@@ -48,3 +48,50 @@ func TestRecord_Value_InvalidPath(t *testing.T) {
 		t.Fatalf("expected error for invalid path")
 	}
 }
+
+func TestRecord_Children_Subquery(t *testing.T) {
+	children := []forcequery.Record{
+		{Fields: map[string]interface{}{"Name": "First"}},
+		{Fields: map[string]interface{}{"Name": "Second"}},
+	}
+	raw := forcequery.Record{Fields: map[string]interface{}{"Clinic__r": children}}
+	rec := Record{raw}
+
+	got := rec.Children("Clinic__r")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(got))
+	}
+	for i, want := range []string{"First", "Second"} {
+		name, err := got[i].StringValue("Name")
+		if err != nil {
+			t.Fatalf("unexpected error reading child %d: %v", i, err)
+		}
+		if name != want {
+			t.Errorf("child %d: expected %q, got %q", i, want, name)
+		}
+	}
+}
+
+func TestRecord_Children_Absent(t *testing.T) {
+	raw := forcequery.Record{Fields: map[string]interface{}{"Name": "Test"}}
+	rec := Record{raw}
+	if got := rec.Children("Clinic__r"); got != nil {
+		t.Errorf("expected nil for absent relationship, got %v", got)
+	}
+}
+
+func TestRecord_Children_WrongType(t *testing.T) {
+	raw := forcequery.Record{Fields: map[string]interface{}{"Clinic__r": "not-a-subquery"}}
+	rec := Record{raw}
+	if got := rec.Children("Clinic__r"); got != nil {
+		t.Errorf("expected nil for non-subquery field, got %v", got)
+	}
+}
+
+func TestRecord_Children_Empty(t *testing.T) {
+	raw := forcequery.Record{Fields: map[string]interface{}{"Clinic__r": []forcequery.Record{}}}
+	rec := Record{raw}
+	if got := rec.Children("Clinic__r"); len(got) != 0 {
+		t.Errorf("expected empty result, got %v", got)
+	}
+}
