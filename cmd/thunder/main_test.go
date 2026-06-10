@@ -4,9 +4,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"math/rand"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -133,6 +136,141 @@ func Test_zipBundle_compresses_highly_compressible_data(t *testing.T) {
 	// if compression is actually engaged.
 	if len(zipData) >= len(data)/4 {
 		t.Errorf("zipBundle did not compress highly-compressible data: input %d bytes, output %d bytes", len(data), len(zipData))
+	}
+}
+
+// unzipChunkFile extracts a single named file from a static resource zip chunk.
+func unzipChunkFile(t *testing.T, zipData []byte, name string) ([]byte, bool) {
+	t.Helper()
+	r, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		t.Fatalf("reading chunk zip: %v", err)
+	}
+	for _, f := range r.File {
+		if f.Name != name {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("opening %s: %v", name, err)
+		}
+		defer rc.Close()
+		b, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		return b, true
+	}
+	return nil, false
+}
+
+// Test_splitAndZip_single_chunk_includes_manifest verifies that a bundle small
+// enough for one resource is returned as a single chunk carrying a parts.json
+// manifest recording a count of 1.
+func Test_splitAndZip_single_chunk_includes_manifest(t *testing.T) {
+	data := bytes.Repeat([]byte("thunder"), 1000)
+	chunks, err := splitAndZipWithLimit(data, staticResourceLimit)
+	if err != nil {
+		t.Fatalf("splitAndZipWithLimit returned error: %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	wasm, ok := unzipChunkFile(t, chunks[0], "bundle.wasm")
+	if !ok {
+		t.Fatal("chunk missing bundle.wasm")
+	}
+	if !bytes.Equal(wasm, data) {
+		t.Error("single chunk bundle.wasm does not match original")
+	}
+	manifest, ok := unzipChunkFile(t, chunks[0], "parts.json")
+	if !ok {
+		t.Fatal("single chunk missing parts.json manifest")
+	}
+	if got := string(manifest); got != `{"parts":1}` {
+		t.Errorf("manifest = %q; want %q", got, `{"parts":1}`)
+	}
+}
+
+// Test_splitAndZip_splits_large_bundle verifies that an oversized bundle is split
+// into multiple chunks, each under the limit, that reassemble to the original,
+// with the first chunk's manifest recording the chunk count.
+func Test_splitAndZip_splits_large_bundle(t *testing.T) {
+	// Incompressible (pseudo-random) data so the compressed whole exceeds the
+	// small limit and forces a split. Deterministic seed keeps the test stable.
+	data := make([]byte, 256*1024)
+	rng := rand.New(rand.NewSource(1))
+	rng.Read(data)
+	const limit = 64 * 1024
+
+	chunks, err := splitAndZipWithLimit(data, limit)
+	if err != nil {
+		t.Fatalf("splitAndZipWithLimit returned error: %v", err)
+	}
+	if len(chunks) < 2 {
+		t.Fatalf("expected multiple chunks, got %d", len(chunks))
+	}
+
+	// First chunk records the total count; trailing chunks carry no manifest.
+	manifest, ok := unzipChunkFile(t, chunks[0], "parts.json")
+	if !ok {
+		t.Fatal("first chunk missing parts.json manifest")
+	}
+	wantManifest := `{"parts":` + strconv.Itoa(len(chunks)) + `}`
+	if got := string(manifest); got != wantManifest {
+		t.Errorf("manifest = %q; want %q", got, wantManifest)
+	}
+	if _, ok := unzipChunkFile(t, chunks[len(chunks)-1], "parts.json"); ok {
+		t.Error("trailing chunk should not carry a parts.json manifest")
+	}
+
+	var reassembled []byte
+	for i, c := range chunks {
+		if len(c) > limit {
+			t.Errorf("chunk %d size %d exceeds limit %d", i, len(c), limit)
+		}
+		wasm, ok := unzipChunkFile(t, c, "bundle.wasm")
+		if !ok {
+			t.Fatalf("chunk %d missing bundle.wasm", i)
+		}
+		reassembled = append(reassembled, wasm...)
+	}
+	if !bytes.Equal(reassembled, data) {
+		t.Error("reassembled bundle does not match original")
+	}
+}
+
+// Test_staticResourceNames verifies chunk 0 keeps the base name and the rest are
+// suffixed Part1, Part2, ... in load order.
+func Test_staticResourceNames(t *testing.T) {
+	if got := staticResourceNames("MyApp", 1); len(got) != 1 || got[0] != "MyApp" {
+		t.Errorf("staticResourceNames single = %v; want [MyApp]", got)
+	}
+	got := staticResourceNames("MyApp", 3)
+	want := []string{"MyApp", "MyAppPart1", "MyAppPart2"}
+	if len(got) != len(want) {
+		t.Fatalf("staticResourceNames(3) = %v; want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("staticResourceNames(3)[%d] = %q; want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// Test_generateAppJS_imports_base_resource verifies the wrapper always imports the
+// base static resource and sets this.app, independent of chunk count.
+func Test_generateAppJS_imports_base_resource(t *testing.T) {
+	js := generateAppJS("osgo/thunder", "MyApp", "My App", "MyApp")
+	for _, want := range []string{
+		"import Thunder from 'osgo/thunder';",
+		"import APP_URL from '@salesforce/resourceUrl/MyApp';",
+		"this.app = APP_URL + '/bundle.wasm';",
+		"this.appName = 'My App';",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("generated wrapper missing %q\n%s", want, js)
+		}
 	}
 }
 

@@ -386,3 +386,13 @@ Salesforce limits individual static resources to 5 MB. Production builds (`thund
 If you are still over 5 MB, additional things worth trying:
 - Audit imports — large dependencies (e.g. heavy JSON schemas, embedded assets, reflection-heavy libraries) can dominate the bundle.
 - Move embedded data out of the WASM and into a separate static resource fetched at runtime.
+
+#### Bundles larger than 5 MB
+
+When the compressed bundle still exceeds the 5 MB static-resource limit, `thunder deploy` automatically splits it across multiple static resources:
+
+- The bundle is sliced into contiguous chunks, each zipped to stay under the limit.
+- Chunk 0 keeps the app's base resource name (so the generated LWC's `resourceUrl` import is unchanged) and additionally carries a small `parts.json` manifest recording the total chunk count.
+- The remaining chunks are deployed as sibling resources named `<base>Part1`, `<base>Part2`, …
+
+At runtime the Thunder LWC fetches the base resource together with its `parts.json`, then fetches any additional `Part` resources, concatenates the pieces in order, and instantiates the combined WASM module. A base resource without a `parts.json` manifest (apps deployed before this feature) is loaded as a single part, so existing apps continue to work unchanged. Because the chunk count travels with the freshly deployed base resource, leftover `Part` resources from an earlier, larger build are simply never requested.

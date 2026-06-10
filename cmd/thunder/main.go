@@ -945,31 +945,31 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Built production bundle at %s\n", buildDir)
 	// Prepare metadata files in memory
 	files := make(forcecli.ForceMetadataFiles)
-	// Compress WASM bundle into a zip static resource
+	// Compress WASM bundle into one or more zip static resources, splitting it
+	// into multiple pieces when it would exceed Salesforce's per-resource limit.
 	wasmData, err := os.ReadFile(filepath.Join(buildDir, "bundle.wasm"))
 	if err != nil {
 		return err
 	}
-	zipData, err := zipBundle(wasmData)
+	zipChunks, err := splitAndZip(wasmData)
 	if err != nil {
 		return err
 	}
-	files["staticresources/"+staticResourceName+".resource"] = zipData
-	staticResourceMetadata := `<?xml version="1.0" encoding="UTF-8"?>
-<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
-	<cacheControl>Private</cacheControl>
-	<contentType>application/zip</contentType>
-</StaticResource>`
-	files["staticresources/"+staticResourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
+	resourceNames := staticResourceNames(staticResourceName, len(zipChunks))
+	if len(zipChunks) > 1 {
+		fmt.Printf("WASM bundle exceeds the static resource limit; splitting into %d resources\n", len(zipChunks))
+	}
+	for i, chunk := range zipChunks {
+		addStaticResource(files, resourceNames[i], chunk)
+	}
 
-	// If --app-only flag is set, only deploy the static resource
+	// If --app-only flag is set, only deploy the static resource(s)
 	if deployAppOnly {
-		// Generate minimal package.xml for just the static resource
+		// Generate minimal package.xml for just the static resource(s)
 		pkg := `<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
   <types>
-    <members>` + staticResourceName + `</members>
-    <name>StaticResource</name>
+` + staticResourceMembersXML(resourceNames) + `    <name>StaticResource</name>
   </types>
   <version>58.0</version>
 </Package>`
@@ -1039,36 +1039,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		appName = appClass
 	}
 
-	js := fmt.Sprintf(`import Thunder from '%s';
-import APP_URL from '@salesforce/resourceUrl/%s';
-
-export default class %s extends Thunder {
-	connectedCallback() {
-		this.app = APP_URL + '/bundle.wasm';
-		this.appName = '%s';
-	}
-}`, thunderImport, staticResourceName, appClass, appName)
+	js := generateAppJS(thunderImport, appClass, appName, staticResourceName)
 	files[fmt.Sprintf("lwc/%s/%s.js", appComp, appComp)] = []byte(js)
 	// JS meta
-	meta := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
-    <apiVersion>58.0</apiVersion>
-    <isExposed>true</isExposed>
-    <masterLabel>%s</masterLabel>
-    <targets>
-        <target>lightning__AppPage</target>
-        <target>lightning__HomePage</target>
-        <target>lightning__RecordAction</target>
-        <target>lightning__RecordPage</target>
-        <target>lightning__Tab</target>
-    </targets>
-    <targetConfigs>
-        <targetConfig targets="lightning__RecordAction">
-            <actionType>ScreenAction</actionType>
-        </targetConfig>
-    </targetConfigs>
-</LightningComponentBundle>`, appClass)
-	files[fmt.Sprintf("lwc/%s/%s.js-meta.xml", appComp, appComp)] = []byte(meta)
+	files[fmt.Sprintf("lwc/%s/%s.js-meta.xml", appComp, appComp)] = []byte(lwcMetaXML(appClass))
 
 	// Calculate tab name for both tab generation and package.xml
 	tabName := toUpperSnakeCase(lwcName)
@@ -1084,60 +1058,7 @@ export default class %s extends Thunder {
 		files[fmt.Sprintf("tabs/%s.tab-meta.xml", tabName)] = []byte(tabXml)
 	}
 	// Generate package.xml for the deployment
-	var packageTpl string
-	if deployThunderDev {
-		// Include thunder dependencies when using --thunder-dev
-		packageTpl = `<?xml version="1.0" encoding="UTF-8"?>
-<Package xmlns="http://soap.sforce.com/2006/04/metadata">
-  <types>
-    <members>%s</members>
-    <name>StaticResource</name>
-  </types>
-  <types>
-    <members>GoBridge</members>
-    <members>GoBridgeTest</members>
-    <name>ApexClass</name>
-  </types>
-  <types>
-    <members>Thunder_Settings__c</members>
-    <name>CustomObject</name>
-  </types>
-  <types>
-    <members>go</members>
-    <members>thunder</members>
-    <members>%s</members>
-    <name>LightningComponentBundle</name>
-  </types>`
-	} else {
-		// Only deploy the app-specific components when using osgo package
-		packageTpl = `<?xml version="1.0" encoding="UTF-8"?>
-<Package xmlns="http://soap.sforce.com/2006/04/metadata">
-  <types>
-    <members>%s</members>
-    <name>StaticResource</name>
-  </types>
-  <types>
-    <members>%s</members>
-    <name>LightningComponentBundle</name>
-  </types>`
-	}
-	if deployTab {
-		packageTpl += `
-  <types>
-    <members>%s</members>
-    <name>CustomTab</name>
-  </types>`
-	}
-	packageTpl += `
-  <version>58.0</version>
-</Package>`
-	var pkg string
-	if deployTab {
-		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp, tabName)
-	} else {
-		pkg = fmt.Sprintf(packageTpl, staticResourceName, appComp)
-	}
-	files["package.xml"] = []byte(pkg)
+	files["package.xml"] = []byte(buildPackageXML(resourceNames, appComp, tabName, deployThunderDev, deployTab))
 	// Perform initial deployment
 	err = performDeployment(files, staticResourceName, appComp, deployTab)
 	if err != nil {
@@ -1213,7 +1134,10 @@ func watchAndRedeploy(appDir, staticResourceName string) error {
 	})
 }
 
-// redeployWASM builds and redeploys only the WASM static resource
+// redeployWASM builds and redeploys the WASM static resource(s). The LWC wrapper
+// always imports the base resource and reads the chunk count from the base
+// chunk's parts.json manifest at runtime, so it never needs regenerating when the
+// chunk count changes between builds.
 func redeployWASM(appDir, staticResourceName string) error {
 	// Build production WASM bundle
 	buildDir, err := buildProdWASM(appDir)
@@ -1222,38 +1146,33 @@ func redeployWASM(appDir, staticResourceName string) error {
 	}
 	defer os.RemoveAll(buildDir)
 
-	// Read and compress WASM bundle
+	// Read and compress WASM bundle into one or more static resources
 	wasmData, err := os.ReadFile(filepath.Join(buildDir, "bundle.wasm"))
 	if err != nil {
 		return err
 	}
-	zipData, err := zipBundle(wasmData)
+	zipChunks, err := splitAndZip(wasmData)
 	if err != nil {
 		return err
 	}
+	resourceNames := staticResourceNames(staticResourceName, len(zipChunks))
 
-	// Create minimal deployment with just the static resource
 	files := make(forcecli.ForceMetadataFiles)
-	files["staticresources/"+staticResourceName+".resource"] = zipData
-	staticResourceMetadata := `<?xml version="1.0" encoding="UTF-8"?>
-<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
-	<cacheControl>Private</cacheControl>
-	<contentType>application/zip</contentType>
-</StaticResource>`
-	files["staticresources/"+staticResourceName+".resource-meta.xml"] = []byte(staticResourceMetadata)
+	for i, chunk := range zipChunks {
+		addStaticResource(files, resourceNames[i], chunk)
+	}
 
-	// Generate minimal package.xml for just the static resource
+	// Generate minimal package.xml for just the static resource(s)
 	pkg := `<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
   <types>
-    <members>` + staticResourceName + `</members>
-    <name>StaticResource</name>
+` + staticResourceMembersXML(resourceNames) + `    <name>StaticResource</name>
   </types>
   <version>58.0</version>
 </Package>`
 	files["package.xml"] = []byte(pkg)
 
-	// Deploy only the WASM static resource
+	// Deploy only the WASM static resource(s)
 	return performDeployment(files, staticResourceName, "", false)
 }
 
@@ -1327,24 +1246,234 @@ func optimizeWASM(wasmPath string) {
 	}
 }
 
-// zipBundle compresses the WebAssembly binary into a zip archive for StaticResource deployment.
-// It uses flate.BestCompression to squeeze the result as close to Salesforce's 5MB
-// per-static-resource limit as possible.
-func zipBundle(wasmData []byte) ([]byte, error) {
+// staticResourceLimit is Salesforce's maximum size for a single static resource (5 MB).
+const staticResourceLimit = 5 * 1024 * 1024
+
+// splitAndZip compresses the WebAssembly binary into one or more zip archives,
+// each holding a contiguous slice of the bundle as bundle.wasm and each small
+// enough to deploy as an individual Salesforce static resource. The first archive
+// always carries a parts.json manifest recording the total chunk count (1 when
+// the bundle fits in a single resource); the runtime loader treats a resource
+// without that manifest as a legacy single-part app.
+func splitAndZip(wasmData []byte) ([][]byte, error) {
+	return splitAndZipWithLimit(wasmData, staticResourceLimit)
+}
+
+// splitAndZipWithLimit is splitAndZip with an explicit per-resource byte limit
+// (parameterized for testing).
+func splitAndZipWithLimit(wasmData []byte, limit int) ([][]byte, error) {
+	// The single-resource case still carries a parts.json manifest (parts=1) so
+	// newly deployed apps are described uniformly.
+	whole, err := zipChunkWithManifest(wasmData, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(whole) <= limit {
+		return [][]byte{whole}, nil
+	}
+	// Estimate the compression ratio from the whole-bundle archive so raw chunks
+	// are sized to land comfortably under the limit once compressed. Target 90%
+	// of the limit to leave headroom for variation in compressibility.
+	ratio := float64(len(whole)) / float64(len(wasmData))
+	rawChunk := int(float64(limit) * 0.9 / ratio)
+	if rawChunk < 1 {
+		rawChunk = limit
+	}
+	for {
+		chunks, ok, err := chunkAndZip(wasmData, rawChunk, limit)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return chunks, nil
+		}
+		// A chunk exceeded the limit (an atypically incompressible region);
+		// shrink the raw chunk size and retry.
+		rawChunk = rawChunk * 4 / 5
+		if rawChunk < 1024 {
+			return nil, fmt.Errorf("unable to split WASM bundle under the %d-byte static resource limit", limit)
+		}
+	}
+}
+
+// chunkAndZip slices wasmData into rawChunk-sized pieces and zips each. The first
+// chunk also carries a parts.json manifest recording the total chunk count so the
+// runtime loader knows how many sibling Part resources to fetch. It reports
+// ok=false (without error) if any resulting archive exceeds limit so the caller
+// can retry with a smaller chunk size.
+func chunkAndZip(wasmData []byte, rawChunk, limit int) (chunks [][]byte, ok bool, err error) {
+	count := (len(wasmData) + rawChunk - 1) / rawChunk
+	for off, idx := 0, 0; off < len(wasmData); off, idx = off+rawChunk, idx+1 {
+		end := off + rawChunk
+		if end > len(wasmData) {
+			end = len(wasmData)
+		}
+		var z []byte
+		if idx == 0 {
+			z, err = zipChunkWithManifest(wasmData[off:end], count)
+		} else {
+			z, err = zipBundle(wasmData[off:end])
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		if len(z) > limit {
+			return nil, false, nil
+		}
+		chunks = append(chunks, z)
+	}
+	return chunks, true, nil
+}
+
+// staticResourceNames returns the static resource name for each WASM chunk in
+// load order. Chunk 0 keeps the bare base name so the LWC wrapper's
+// resourceUrl import is unchanged; additional chunks are suffixed Part1, Part2,
+// ... and discovered at runtime from the base chunk's parts.json manifest.
+func staticResourceNames(base string, n int) []string {
+	names := make([]string, n)
+	names[0] = base
+	for i := 1; i < n; i++ {
+		names[i] = fmt.Sprintf("%sPart%d", base, i)
+	}
+	return names
+}
+
+// staticResourceMetaXML is the metadata accompanying every WASM static resource.
+const staticResourceMetaXML = `<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+	<cacheControl>Private</cacheControl>
+	<contentType>application/zip</contentType>
+</StaticResource>`
+
+// addStaticResource registers a zipped WASM chunk and its metadata under name.
+func addStaticResource(files forcecli.ForceMetadataFiles, name string, zipData []byte) {
+	files["staticresources/"+name+".resource"] = zipData
+	files["staticresources/"+name+".resource-meta.xml"] = []byte(staticResourceMetaXML)
+}
+
+// staticResourceMembersXML renders the <members> lines for a package.xml
+// StaticResource type, one per chunk resource.
+func staticResourceMembersXML(names []string) string {
+	var b strings.Builder
+	for _, n := range names {
+		b.WriteString("    <members>" + n + "</members>\n")
+	}
+	return b.String()
+}
+
+// generateAppJS builds the LWC JavaScript wrapper for a deployed app. It always
+// imports the base static resource and sets this.app; when the bundle is split
+// across several resources Thunder discovers the additional chunks at runtime from
+// the base chunk's parts.json manifest, so the wrapper itself does not change with
+// chunk count.
+func generateAppJS(thunderImport, appClass, appName, baseResourceName string) string {
+	return fmt.Sprintf(`import Thunder from '%s';
+import APP_URL from '@salesforce/resourceUrl/%s';
+
+export default class %s extends Thunder {
+	connectedCallback() {
+		this.app = APP_URL + '/bundle.wasm';
+		this.appName = '%s';
+	}
+}`, thunderImport, baseResourceName, appClass, appName)
+}
+
+// lwcMetaXML returns the LightningComponentBundle metadata for a generated app
+// wrapper with the given master label.
+func lwcMetaXML(masterLabel string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>58.0</apiVersion>
+    <isExposed>true</isExposed>
+    <masterLabel>%s</masterLabel>
+    <targets>
+        <target>lightning__AppPage</target>
+        <target>lightning__HomePage</target>
+        <target>lightning__RecordAction</target>
+        <target>lightning__RecordPage</target>
+        <target>lightning__Tab</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig targets="lightning__RecordAction">
+            <actionType>ScreenAction</actionType>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>`, masterLabel)
+}
+
+// buildPackageXML assembles the deployment manifest covering the WASM static
+// resources, the generated LWC (plus Thunder runtime components when deploying
+// with --thunder-dev), and an optional CustomTab.
+func buildPackageXML(resourceNames []string, appComp, tabName string, thunderDev, withTab bool) string {
+	var b strings.Builder
+	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+	b.WriteString("<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n")
+	b.WriteString("  <types>\n")
+	b.WriteString(staticResourceMembersXML(resourceNames))
+	b.WriteString("    <name>StaticResource</name>\n")
+	b.WriteString("  </types>\n")
+	if thunderDev {
+		b.WriteString("  <types>\n    <members>GoBridge</members>\n    <members>GoBridgeTest</members>\n    <name>ApexClass</name>\n  </types>\n")
+		b.WriteString("  <types>\n    <members>Thunder_Settings__c</members>\n    <name>CustomObject</name>\n  </types>\n")
+		b.WriteString("  <types>\n    <members>go</members>\n    <members>thunder</members>\n    <members>" + appComp + "</members>\n    <name>LightningComponentBundle</name>\n  </types>\n")
+	} else {
+		b.WriteString("  <types>\n    <members>" + appComp + "</members>\n    <name>LightningComponentBundle</name>\n  </types>\n")
+	}
+	if withTab {
+		b.WriteString("  <types>\n    <members>" + tabName + "</members>\n    <name>CustomTab</name>\n  </types>\n")
+	}
+	b.WriteString("  <version>58.0</version>\n")
+	b.WriteString("</Package>")
+	return b.String()
+}
+
+// zipEntry is a single file to place in a static resource zip archive.
+type zipEntry struct {
+	name string
+	data []byte
+}
+
+// zipFiles compresses the given entries into a zip archive for StaticResource
+// deployment. It uses flate.BestCompression to squeeze the result as close to
+// Salesforce's 5MB per-static-resource limit as possible.
+func zipFiles(entries []zipEntry) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	zw := zip.NewWriter(buf)
 	zw.RegisterCompressor(zip.Deflate, func(out io.Writer) (io.WriteCloser, error) {
 		return flate.NewWriter(out, flate.BestCompression)
 	})
-	w, err := zw.Create("bundle.wasm")
-	if err != nil {
-		return nil, err
-	}
-	if _, err := w.Write(wasmData); err != nil {
-		return nil, err
+	for _, e := range entries {
+		w, err := zw.Create(e.name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := w.Write(e.data); err != nil {
+			return nil, err
+		}
 	}
 	if err := zw.Close(); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// zipBundle compresses the WebAssembly binary into a single-file zip archive
+// containing only bundle.wasm. It is used for the trailing chunks of a split
+// bundle, which carry no manifest. (A resource with neither additional chunks nor
+// a parts.json manifest is what legacy, pre-split apps deployed, and the runtime
+// loader treats such a resource as a single-part bundle.)
+func zipBundle(wasmData []byte) ([]byte, error) {
+	return zipFiles([]zipEntry{{name: "bundle.wasm", data: wasmData}})
+}
+
+// zipChunkWithManifest compresses the first chunk of a split bundle, adding a
+// parts.json manifest that records how many static resources the full bundle was
+// split across. The runtime loader reads it to fetch and concatenate the
+// remaining Part resources before instantiating the WASM module.
+func zipChunkWithManifest(wasmData []byte, parts int) ([]byte, error) {
+	manifest := fmt.Sprintf(`{"parts":%d}`, parts)
+	return zipFiles([]zipEntry{
+		{name: "bundle.wasm", data: wasmData},
+		{name: "parts.json", data: []byte(manifest)},
+	})
 }

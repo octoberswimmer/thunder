@@ -66,8 +66,7 @@ public with sharing class GoBridge {
 		for (Integer i = 0; i < input.length(); i++) {
 			String ch = input.substring(i, i + 1);
 			if (ch == '\'') {
-				if (inQuote &&
-					i + 1 < input.length() &&
+				if (inQuote && i + 1 < input.length() &&
 					input.substring(i + 1, i + 2) == '\'') {
 					i++;
 					continue;
@@ -106,8 +105,7 @@ public with sharing class GoBridge {
 		if (sanitized.contains(' group by ') ||
 			sanitized.contains(' with rollup') ||
 			sanitized.contains(' with cube') ||
-			sanitized.contains(' having ')
-		) {
+			sanitized.contains(' having ')) {
 			return true;
 		}
 		return false;
@@ -556,7 +554,7 @@ public with sharing class GoBridge {
 					}
 				}
 			} catch (Exception e) {
-			// If conversion fails, fall through to default assignment
+				// If conversion fails, fall through to default assignment
 			}
 		}
 
