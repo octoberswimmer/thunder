@@ -710,5 +710,16 @@ public with sharing class GoBridge {
 		}
 	}
 
+	/**
+	 * Visualforce Remoting entry point for the REST proxy. Thunder apps deployed
+	 * as a Visualforce page (thunder deploy --visualforce) run outside Lightning
+	 * Web Security and cannot import the @AuraEnabled callRest, so they reach the
+	 * same proxy through JavaScript Remoting instead.
+	 */
+	@RemoteAction
+	public static String remoteCallRest(String method, String url, String body) {
+		return callRest(method, url, body);
+	}
+
 	class UnsupportedUrlException extends Exception {}
 }

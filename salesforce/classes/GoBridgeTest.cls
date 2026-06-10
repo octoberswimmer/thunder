@@ -1066,4 +1066,24 @@ private class GoBridgeTest {
 		System.assertEquals(0, records.size(), 'records should be empty');
 		System.assertEquals(null, queryResult.get('nextRecordsUrl'), 'nextRecordsUrl should be null when no results');
 	}
+
+	@isTest
+	static void should_proxy_remote_call_rest_to_call_rest() {
+		List<Account> accts = new List<Account>();
+		for (Integer i = 0; i < 3; i++) {
+			accts.add(new Account(Name = 'RemoteAcct' + i, Type = 'VA'));
+		}
+		insert accts;
+
+		String soql = 'SELECT Id, Name FROM Account WHERE Name LIKE \'RemoteAcct%\' ORDER BY Name';
+		String soqlEnc = EncodingUtil.urlEncode(soql, 'UTF-8');
+		String url = '/services/data/v58.0/query?q=' + soqlEnc;
+
+		String viaRemote = GoBridge.remoteCallRest('GET', url, null);
+		String viaDirect = GoBridge.callRest('GET', url, null);
+		System.assertEquals(viaDirect, viaRemote, 'remoteCallRest should mirror callRest');
+
+		Map<String, Object> result = (Map<String, Object>)JSON.deserializeUntyped(viaRemote);
+		System.assertEquals(3, (Integer)result.get('totalSize'), 'totalSize should match inserted records');
+	}
 }

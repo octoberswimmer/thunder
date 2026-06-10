@@ -347,6 +347,7 @@ go install github.com/octoberswimmer/thunder/cmd/thunder@latest
 ```sh
 thunder serve [dir] --port PORT   # build & serve locally (defaults to current dir)
 thunder deploy [dir] [--tab]      # deploy app to Salesforce org (defaults to current dir)
+thunder deploy [dir] --visualforce # deploy as a Visualforce page (runs outside Lightning Web Security)
 ```
 
 #### serve
@@ -365,6 +366,7 @@ API REST requests (via `/services/`) are automatically proxied through your acti
 - `--tab, -t`: Also include a CustomTab in the deployment and open it for the app
 - `--watch, -w`: Watch for file changes and automatically redeploy
 - `--app-only`: Deploy only the static resource (WASM bundle), skipping LWC, Apex, and other metadata
+- `--visualforce`: Deploy the app as a Visualforce page instead of an LWC (runs outside Lightning Web Security)
 - `--debug`: Enable debug output
 
 `thunder deploy`:
@@ -374,7 +376,28 @@ API REST requests (via `/services/`) are automatically proxied through your acti
 - With `--tab`, adds a CustomTab to the package, deploys it, and opens `/lightning/n/<app>` in your browser.
 - With `--watch`, monitors Go source files and automatically redeploys on changes for rapid development cycles.
 - With `--app-only`, deploys only the static resource containing the WASM bundle. This is useful for production deployments where the supporting metadata (LWC components, Apex classes) are already deployed.
+- With `--visualforce`, deploys the app as a Visualforce page instead of an LWC (see below).
 - All deployments use `rollbackOnError: true` and skip test execution for faster deployment to production.
+
+#### Visualforce deployment (`--visualforce`)
+Lightning Web Security (LWS) sandboxes LWC JavaScript and blocks some browser
+APIs — notably it rejects Web Workers created from blob URLs with `Unsupported
+MIME type`. Apps that rely on workers therefore cannot run inside the Thunder LWC.
+
+Passing `--visualforce` deploys the app as a Visualforce page instead. Visualforce
+pages render in a plain iframe outside LWS, so Web Workers and blob URLs work.
+
+With `--visualforce`, `thunder deploy`:
+- Deploys the WASM static resource(s) plus the Go runtime (`wasm_exec.js`) as a static resource.
+- Deploys a Visualforce page that loads the runtime, fetches and concatenates the WASM chunks, runs the app, and hands it a container `div` via `startWithDiv`.
+- Bundles the `GoBridge` proxy classes and the `Thunder_Settings__c` object unmanaged into the org. The page's REST proxy (`get`/`post`/`patch`/`delete`) reaches `GoBridge` through JavaScript Remoting (`GoBridge.remoteCallRest`) rather than the `@AuraEnabled` path the LWC uses.
+- With `--tab`, adds a CustomTab pointing at the page and opens it; otherwise opens `/apex/<Page>` directly.
+- Reads record context from the page's `?id=` URL parameter (exposed to the app as `recordId`).
+
+Limitations: the Lightning UI API adapters (`getPicklistValuesByRecordType`,
+`getObjectInfo`) are only available inside Lightning, so they are unavailable on
+the Visualforce page and return a clear error instead. The SOQL/SObject/composite
+REST proxy works identically to the LWC path.
 
 #### Bundle size optimization
 Salesforce limits individual static resources to 5 MB. Production builds (`thunder build`, `thunder deploy`) apply several optimizations to keep the bundle small:

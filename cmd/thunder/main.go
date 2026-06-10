@@ -40,13 +40,14 @@ var (
 	buildMutex      sync.RWMutex
 	session         *forcecli.Force
 	// deploy command flags
-	deployDir        string
-	deployTab        bool
-	deployWatch      bool
-	deployDebug      bool
-	deployAppOnly    bool
-	deployThunderDev bool
-	deployName       string
+	deployDir         string
+	deployTab         bool
+	deployWatch       bool
+	deployDebug       bool
+	deployAppOnly     bool
+	deployThunderDev  bool
+	deployVisualforce bool
+	deployName        string
 	// build command flags
 	buildDev    bool
 	buildOutput string
@@ -108,6 +109,7 @@ func init() {
 	deployCmd.Flags().BoolVar(&deployDebug, "debug", false, "Enable debug output")
 	deployCmd.Flags().BoolVar(&deployAppOnly, "app-only", false, "Deploy only the static resource (WASM bundle)")
 	deployCmd.Flags().BoolVar(&deployThunderDev, "thunder-dev", false, "Deploy unpackaged thunder dependencies instead of using the osgo package")
+	deployCmd.Flags().BoolVar(&deployVisualforce, "visualforce", false, "Deploy the app as a Visualforce page (runs outside Lightning Web Security; needed for apps that use Web Workers)")
 	deployCmd.Flags().StringVar(&deployName, "name", "", "Name for the app and tab (defaults to directory name)")
 	// build flags
 	buildCmd.Flags().BoolVarP(&buildDev, "dev", "d", false, "Build with development tags")
@@ -976,7 +978,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		files["package.xml"] = []byte(pkg)
 
 		// Perform deployment
-		err = performDeployment(files, staticResourceName, "", false)
+		err = performDeployment(files, staticResourceName, "", false, nil)
 		if err != nil {
 			return err
 		}
@@ -986,6 +988,39 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to remove temp dir %s: %v\n", buildDir, rmErr)
 		}
 
+		return nil
+	}
+
+	// If --visualforce is set, deploy the app as a Visualforce page instead of an
+	// LWC. Visualforce pages render in a plain iframe outside Lightning Web
+	// Security, so apps that create Web Workers from blob URLs (which LWS rejects
+	// with "Unsupported MIME type") run there. The REST proxy reaches the same
+	// GoBridge logic through JavaScript Remoting rather than the @AuraEnabled path.
+	if deployVisualforce {
+		appName := deployName
+		if appName == "" {
+			appName = appClass
+		}
+		wasmExecName := staticResourceName + "WasmExec"
+		tabName := toUpperSnakeCase(lwcName)
+		if err := addVisualforceMetadata(files, wasmExecName, resourceNames, appClass, appName, tabName); err != nil {
+			return err
+		}
+		files["package.xml"] = []byte(buildVisualforcePackageXML(resourceNames, wasmExecName, appClass, tabName, deployTab))
+
+		if err := performDeployment(files, staticResourceName, "", false, []string{"GoBridgeTest"}); err != nil {
+			return err
+		}
+		openVisualforceApp(appClass, tabName, deployTab)
+
+		if rmErr := os.RemoveAll(buildDir); rmErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove temp dir %s: %v\n", buildDir, rmErr)
+		}
+
+		if deployWatch {
+			fmt.Printf("Watching for changes in %s (WASM-only redeploys)...\n", deployDir)
+			return watchAndRedeploy(deployDir, staticResourceName)
+		}
 		return nil
 	}
 
@@ -1059,8 +1094,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 	// Generate package.xml for the deployment
 	files["package.xml"] = []byte(buildPackageXML(resourceNames, appComp, tabName, deployThunderDev, deployTab))
-	// Perform initial deployment
-	err = performDeployment(files, staticResourceName, appComp, deployTab)
+	// Perform initial deployment. When deploying the unpackaged thunder
+	// dependencies (which include GoBridgeTest), run only that test.
+	var runTests []string
+	if deployThunderDev {
+		runTests = []string{"GoBridgeTest"}
+	}
+	err = performDeployment(files, staticResourceName, appComp, deployTab, runTests)
 	if err != nil {
 		return err
 	}
@@ -1080,7 +1120,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 }
 
 // performDeployment deploys the given metadata files to Salesforce
-func performDeployment(files forcecli.ForceMetadataFiles, staticResourceName, appComp string, openTab bool) error {
+func performDeployment(files forcecli.ForceMetadataFiles, staticResourceName, appComp string, openTab bool, runTests []string) error {
 	creds, err := forcecli.ActiveCredentials(false)
 	if err != nil {
 		return fmt.Errorf("failed to load Salesforce credentials: %w", err)
@@ -1089,7 +1129,14 @@ func performDeployment(files forcecli.ForceMetadataFiles, staticResourceName, ap
 	opts := forcecli.ForceDeployOptions{
 		SinglePackage:   true,
 		RollbackOnError: true,
-		RunTests:        []string{}, // Empty slice to avoid running tests
+	}
+	// Run only the named Apex tests when any are deploying (e.g. GoBridgeTest),
+	// rather than the org's entire test suite. With no tests, skip execution.
+	if len(runTests) > 0 {
+		opts.TestLevel = "RunSpecifiedTests"
+		opts.RunTests = runTests
+	} else {
+		opts.RunTests = []string{}
 	}
 	fmt.Printf("Deploying metadata to %s...\n", creds.InstanceUrl)
 	result, err := fm.Metadata.Deploy(files, opts)
@@ -1173,7 +1220,7 @@ func redeployWASM(appDir, staticResourceName string) error {
 	files["package.xml"] = []byte(pkg)
 
 	// Deploy only the WASM static resource(s)
-	return performDeployment(files, staticResourceName, "", false)
+	return performDeployment(files, staticResourceName, "", false, nil)
 }
 
 // buildProdWASM compiles the Go app in appDir to WebAssembly for production.
@@ -1425,6 +1472,281 @@ func buildPackageXML(resourceNames []string, appComp, tabName string, thunderDev
 	b.WriteString("  <version>58.0</version>\n")
 	b.WriteString("</Package>")
 	return b.String()
+}
+
+// addVisualforceMetadata registers everything a Visualforce-hosted app needs:
+// the Go runtime (wasm_exec.js) as a raw static resource, the GoBridge proxy
+// classes and Thunder Settings object (deployed unmanaged so the page's
+// JavaScript Remoting can reach them), the Visualforce page itself, and an
+// optional CustomTab pointing at the page.
+func addVisualforceMetadata(files forcecli.ForceMetadataFiles, wasmExecName string, resourceNames []string, pageName, appName, tabName string) error {
+	// Go runtime shim from the SDK matching the toolchain that built the bundle.
+	wasmExecPath := filepath.Join(runtime.GOROOT(), "lib", "wasm", "wasm_exec.js")
+	wasmExec, err := os.ReadFile(wasmExecPath)
+	if err != nil {
+		return fmt.Errorf("failed to read wasm_exec.js from the Go SDK: %w", err)
+	}
+	addRawStaticResource(files, wasmExecName, wasmExec)
+
+	// GoBridge proxy classes and the Thunder Settings object, deployed unmanaged
+	// so the page can call GoBridge.remoteCallRest via JavaScript Remoting.
+	apexTemplates := []string{
+		"classes/GoBridge.cls",
+		"classes/GoBridge.cls-meta.xml",
+		"classes/GoBridgeTest.cls",
+		"classes/GoBridgeTest.cls-meta.xml",
+		"objects/Thunder_Settings__c.object",
+	}
+	for _, src := range apexTemplates {
+		data, err := salesforce.SalesforceMetadataFS.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("failed to read embedded %s: %w", src, err)
+		}
+		files[src] = data
+	}
+
+	// The Visualforce page and its metadata.
+	page := generateVisualforcePage(appName, wasmExecName, resourceNames)
+	files[fmt.Sprintf("pages/%s.page", pageName)] = []byte(page)
+	files[fmt.Sprintf("pages/%s.page-meta.xml", pageName)] = []byte(visualforcePageMetaXML(appName))
+
+	// Optional CustomTab pointing at the page.
+	if deployTab {
+		tabXml := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>%s</label>
+    <page>%s</page>
+    <motif>Custom75: Default</motif>
+</CustomTab>`, appName, pageName)
+		files[fmt.Sprintf("tabs/%s.tab-meta.xml", tabName)] = []byte(tabXml)
+	}
+	return nil
+}
+
+// wasmExecResourceMetaXML accompanies the raw wasm_exec.js static resource.
+const wasmExecResourceMetaXML = `<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
+	<cacheControl>Public</cacheControl>
+	<contentType>text/javascript</contentType>
+</StaticResource>`
+
+// addRawStaticResource registers an uncompressed static resource (used for
+// wasm_exec.js, which the Visualforce page loads directly as a script).
+func addRawStaticResource(files forcecli.ForceMetadataFiles, name string, data []byte) {
+	files["staticresources/"+name+".resource"] = data
+	files["staticresources/"+name+".resource-meta.xml"] = []byte(wasmExecResourceMetaXML)
+}
+
+// wasmURLListJS renders the comma-separated list of Visualforce $Resource URLs
+// for each WASM chunk, in load order, for embedding in the page's script. Unlike
+// the LWC loader, the chunk count is known at deploy time, so the exact list is
+// emitted rather than discovered from a runtime manifest.
+func wasmURLListJS(resourceNames []string) string {
+	var parts []string
+	for _, n := range resourceNames {
+		parts = append(parts, fmt.Sprintf("\"{!URLFOR($Resource.%s, 'bundle.wasm')}\"", n))
+	}
+	return strings.Join(parts, ",\n\t\t\t")
+}
+
+// generateVisualforcePage builds the Visualforce page that hosts the Go WASM app.
+// The page loads the Go runtime and the WASM static resource(s), exposes the same
+// global functions the app expects (get/post/patch/delete plus record/exit
+// helpers), instantiates the module, and hands a container div to startWithDiv.
+// REST calls reach GoBridge.remoteCallRest through JavaScript Remoting.
+func generateVisualforcePage(appName, wasmExecName string, resourceNames []string) string {
+	return fmt.Sprintf(`<apex:page controller="GoBridge" showHeader="false" sidebar="false" standardStylesheets="false" applyHtmlTag="false" applyBodyTag="false" docType="html-5.0">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8"/>
+	<title>%[1]s</title>
+	<apex:slds />
+	<apex:includeScript value="{!$Resource.%[2]s}"/>
+</head>
+<body class="slds-scope">
+	<div id="thunder-spinner" class="slds-spinner_container">
+		<div role="status" class="slds-spinner slds-spinner_medium">
+			<span class="slds-assistive-text">Loading</span>
+			<div class="slds-spinner__dot-a"></div>
+			<div class="slds-spinner__dot-b"></div>
+		</div>
+	</div>
+	<div id="thunder-app" class="slds-scope"></div>
+	<script type="text/javascript">
+	(function () {
+		"use strict";
+
+		// Record context, if the page was opened with ?id=<recordId>. When absent
+		// the merge field renders empty; expose undefined (not "") from
+		// getRecordIdForDiv so api.RecordId() reports "no record" and the app
+		// falls back to its own behavior instead of querying for an empty id.
+		var recordIdParam = "{!$CurrentPage.parameters.id}";
+		var recordId = recordIdParam || undefined;
+		globalThis.recordId = recordIdParam;
+		globalThis.getRecordIdForDiv = function () { return recordId; };
+
+		// REST proxy: reach GoBridge through JavaScript Remoting. The Go runtime
+		// expects a Promise that resolves to the JSON response string, mirroring
+		// the LWC callRest proxy.
+		function remoteCall(method, url, body) {
+			return new Promise(function (resolve, reject) {
+				Visualforce.remoting.Manager.invokeAction(
+					"{!$RemoteAction.GoBridge.remoteCallRest}",
+					method, url, body,
+					function (result, event) {
+						if (event.status) {
+							resolve(result);
+						} else {
+							reject(event.message || "Remoting error");
+						}
+					},
+					{ escape: false, timeout: 120000 }
+				);
+			});
+		}
+
+		globalThis.get = function (url) { return remoteCall("GET", url, null); };
+		globalThis.post = function (url, body) { return remoteCall("POST", url, body); };
+		globalThis.patch = function (url, body) { return remoteCall("PATCH", url, body); };
+		globalThis.delete = function (url) { return remoteCall("DELETE", url, null); };
+
+		// The UI API adapters (picklist/object-info) are Lightning-only; surface a
+		// clear error instead of letting the Go runtime call an undefined function.
+		function unsupported(name) {
+			return function (config, cb) {
+				cb({ error: name + " is not available on Visualforce pages" });
+			};
+		}
+		globalThis.getPicklistValuesByRecordType = unsupported("getPicklistValuesByRecordType");
+		globalThis.getObjectInfo = unsupported("getObjectInfo");
+
+		// Exit/navigation helpers. On a standalone page, navigate the top window.
+		globalThis.thunderExitToRecord = function (id) {
+			if (id) { window.top.location.href = "/" + id; }
+		};
+		globalThis.thunderExit = function () {
+			if (recordId) { window.top.location.href = "/" + recordId; }
+			else { window.history.back(); }
+		};
+		globalThis.thunderCloseModal = function () { window.history.back(); };
+
+		// A WASM bundle larger than Salesforce's 5MB static resource limit is split
+		// across several resources; concatenate the chunks before instantiating.
+		var wasmUrls = [
+			%[3]s
+		];
+
+		function concatBuffers(buffers) {
+			if (buffers.length === 1) { return buffers[0]; }
+			var total = buffers.reduce(function (sum, buf) { return sum + buf.byteLength; }, 0);
+			var combined = new Uint8Array(total);
+			var offset = 0;
+			buffers.forEach(function (buf) {
+				combined.set(new Uint8Array(buf), offset);
+				offset += buf.byteLength;
+			});
+			return combined.buffer;
+		}
+
+		function hideSpinner() {
+			var spinner = document.getElementById("thunder-spinner");
+			if (spinner) { spinner.style.display = "none"; }
+		}
+
+		function start() {
+			Promise.all(wasmUrls.map(function (u) { return fetch(u); }))
+				.then(function (responses) {
+					var failed = responses.find(function (r) { return !r.ok; });
+					if (failed) {
+						return failed.text().then(function (t) { throw new Error(t); });
+					}
+					return Promise.all(responses.map(function (r) { return r.arrayBuffer(); }));
+				})
+				.then(function (buffers) {
+					var src = concatBuffers(buffers);
+					var go = new Go();
+					return WebAssembly.instantiate(src, go.importObject).then(function (result) {
+						go.run(result.instance);
+						return new Promise(function (resolve) { setTimeout(resolve, 1000); });
+					});
+				})
+				.then(function () {
+					hideSpinner();
+					startWithDiv(document.getElementById("thunder-app"));
+				})
+				.catch(function (err) {
+					hideSpinner();
+					var pre = document.createElement("pre");
+					pre.innerText = (err && err.message) || String(err);
+					document.getElementById("thunder-app").appendChild(pre);
+				});
+		}
+
+		if (document.readyState === "loading") {
+			document.addEventListener("DOMContentLoaded", start);
+		} else {
+			start();
+		}
+	})();
+	</script>
+</body>
+</html>
+</apex:page>`, appName, wasmExecName, wasmURLListJS(resourceNames))
+}
+
+// visualforcePageMetaXML returns the ApexPage metadata for a generated page.
+func visualforcePageMetaXML(label string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<ApexPage xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>58.0</apiVersion>
+    <availableInTouch>true</availableInTouch>
+    <label>%s</label>
+</ApexPage>`, label)
+}
+
+// buildVisualforcePackageXML assembles the deployment manifest for a Visualforce
+// app: the WASM static resources and wasm_exec.js, the GoBridge proxy classes,
+// the Thunder Settings object, the page, and an optional CustomTab.
+func buildVisualforcePackageXML(resourceNames []string, wasmExecName, pageName, tabName string, withTab bool) string {
+	var b strings.Builder
+	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+	b.WriteString("<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n")
+	b.WriteString("  <types>\n")
+	b.WriteString(staticResourceMembersXML(resourceNames))
+	b.WriteString("    <members>" + wasmExecName + "</members>\n")
+	b.WriteString("    <name>StaticResource</name>\n")
+	b.WriteString("  </types>\n")
+	b.WriteString("  <types>\n    <members>GoBridge</members>\n    <members>GoBridgeTest</members>\n    <name>ApexClass</name>\n  </types>\n")
+	b.WriteString("  <types>\n    <members>Thunder_Settings__c</members>\n    <name>CustomObject</name>\n  </types>\n")
+	b.WriteString("  <types>\n    <members>" + pageName + "</members>\n    <name>ApexPage</name>\n  </types>\n")
+	if withTab {
+		b.WriteString("  <types>\n    <members>" + tabName + "</members>\n    <name>CustomTab</name>\n  </types>\n")
+	}
+	b.WriteString("  <version>58.0</version>\n")
+	b.WriteString("</Package>")
+	return b.String()
+}
+
+// openVisualforceApp opens the deployed Visualforce app in the browser: the
+// CustomTab when one was deployed, otherwise the page directly.
+func openVisualforceApp(pageName, tabName string, withTab bool) {
+	creds, err := forcecli.ActiveCredentials(false)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not determine instance URL to open app: %v\n", err)
+		return
+	}
+	var url string
+	if withTab {
+		url = fmt.Sprintf("%s/lightning/n/%s", creds.InstanceUrl, tabName)
+	} else {
+		url = fmt.Sprintf("%s/apex/%s", creds.InstanceUrl, pageName)
+	}
+	if deployDebug {
+		fmt.Printf("Debug: Opening URL: %s\n", url)
+	}
+	if err := desktop.Open(url); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to open app URL: %v\n", err)
+	}
 }
 
 // zipEntry is a single file to place in a static resource zip archive.

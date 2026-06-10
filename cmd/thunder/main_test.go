@@ -274,6 +274,66 @@ func Test_generateAppJS_imports_base_resource(t *testing.T) {
 	}
 }
 
+func Test_generateVisualforcePage_wires_runtime_and_remoting(t *testing.T) {
+	page := generateVisualforcePage("Clinic Scheduler", "ClinicSchedulerWasmExec", []string{"ClinicScheduler"})
+	for _, want := range []string{
+		`controller="GoBridge"`,
+		`<apex:includeScript value="{!$Resource.ClinicSchedulerWasmExec}"/>`,
+		`"{!$RemoteAction.GoBridge.remoteCallRest}"`,
+		`globalThis.get = function`,
+		`"{!URLFOR($Resource.ClinicScheduler, 'bundle.wasm')}"`,
+		`startWithDiv(document.getElementById("thunder-app"))`,
+		`new Go()`,
+		`<title>Clinic Scheduler</title>`,
+		// Absent ?id= must surface as undefined so api.RecordId() reports "no record".
+		`var recordId = recordIdParam || undefined;`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("generated page missing %q\n%s", want, page)
+		}
+	}
+}
+
+func Test_generateVisualforcePage_lists_all_split_parts(t *testing.T) {
+	page := generateVisualforcePage("App", "AppWasmExec", staticResourceNames("App", 3))
+	for _, want := range []string{
+		`"{!URLFOR($Resource.App, 'bundle.wasm')}"`,
+		`"{!URLFOR($Resource.AppPart1, 'bundle.wasm')}"`,
+		`"{!URLFOR($Resource.AppPart2, 'bundle.wasm')}"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("split page missing %q", want)
+		}
+	}
+}
+
+func Test_buildVisualforcePackageXML_includes_all_types(t *testing.T) {
+	xml := buildVisualforcePackageXML(staticResourceNames("App", 2), "AppWasmExec", "App", "APP", true)
+	for _, want := range []string{
+		"<members>App</members>",
+		"<members>AppPart1</members>",
+		"<members>AppWasmExec</members>",
+		"<name>StaticResource</name>",
+		"<members>GoBridge</members>",
+		"<name>ApexClass</name>",
+		"<members>Thunder_Settings__c</members>",
+		"<name>ApexPage</name>",
+		"<members>APP</members>",
+		"<name>CustomTab</name>",
+	} {
+		if !strings.Contains(xml, want) {
+			t.Errorf("package.xml missing %q\n%s", want, xml)
+		}
+	}
+}
+
+func Test_buildVisualforcePackageXML_omits_tab_without_flag(t *testing.T) {
+	xml := buildVisualforcePackageXML(staticResourceNames("App", 1), "AppWasmExec", "App", "APP", false)
+	if strings.Contains(xml, "<name>CustomTab</name>") {
+		t.Errorf("package.xml should not contain a CustomTab when withTab is false\n%s", xml)
+	}
+}
+
 // Test_optimizeWASM_missing_binary_is_noop ensures optimizeWASM does not panic
 // or modify the input file when wasm-opt is unavailable.
 func Test_optimizeWASM_missing_binary_is_noop(t *testing.T) {
