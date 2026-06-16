@@ -388,11 +388,22 @@ Passing `--visualforce` deploys the app as a Visualforce page instead. Visualfor
 pages render in a plain iframe outside LWS, so Web Workers and blob URLs work.
 
 With `--visualforce`, `thunder deploy`:
-- Deploys the WASM static resource(s) plus the Go runtime (`wasm_exec.js`) as a static resource.
-- Deploys a Visualforce page that loads the runtime, fetches and concatenates the WASM chunks, runs the app, and hands it a container `div` via `startWithDiv`.
-- Bundles the `GoBridge` proxy classes and the `Thunder_Settings__c` object unmanaged into the org. The page's REST proxy (`get`/`post`/`patch`/`delete`) reaches `GoBridge` through JavaScript Remoting (`GoBridge.remoteCallRest`) rather than the `@AuraEnabled` path the LWC uses.
+- Deploys only the WASM static resource(s) and a Visualforce page — like the LWC deployment, the shared `GoBridge` proxy comes from the `osgo` managed package. The page loads the runtime, fetches and concatenates the WASM chunks, runs the app, and hands it a container `div` via `startWithDiv`.
+- Packs the Go runtime (`wasm_exec.js`) into the first WASM static resource next to `bundle.wasm` and loads it from there, so the runtime always matches the compiler that built the bundle. No separate runtime resource is deployed.
+- Reaches the REST proxy (`get`/`post`/`patch`/`delete`) through JavaScript Remoting against the package's `osgo.GoBridge` controller (`osgo.GoBridge.remoteCallRest`) rather than the `@AuraEnabled` path the LWC uses.
 - With `--tab`, adds a CustomTab pointing at the page and opens it; otherwise opens `/apex/<Page>` directly.
 - Reads record context from the page's `?id=` URL parameter (exposed to the app as `recordId`).
+
+Adding `--thunder-dev` deploys the proxy unmanaged instead of using the package:
+the `GoBridge` classes and the `Thunder_Settings__c` object are bundled into the
+org, and the page references the unmanaged `GoBridge` controller. Use this when
+developing against thunder itself; otherwise the `osgo` package supplies them.
+(`wasm_exec.js` rides in the WASM static resource either way.)
+
+> The Visualforce page calls `osgo.GoBridge.remoteCallRest` as a `@RemoteAction`
+> across the package namespace, so `GoBridge` and `remoteCallRest` are declared
+> `global`. Rebuild and publish a new `osgo` package version (and update
+> `osgoPackageVersionId`) after changing either.
 
 Limitations: the Lightning UI API adapters (`getPicklistValuesByRecordType`,
 `getObjectInfo`) are only available inside Lightning, so they are unavailable on

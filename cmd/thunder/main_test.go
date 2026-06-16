@@ -240,6 +240,36 @@ func Test_splitAndZip_splits_large_bundle(t *testing.T) {
 	}
 }
 
+// Test_splitAndZip_first_chunk_carries_extras verifies that extra files (e.g.
+// wasm_exec.js for Visualforce apps) are packed into the first chunk only.
+func Test_splitAndZip_first_chunk_carries_extras(t *testing.T) {
+	// Incompressible data large enough to force a split so we can assert the
+	// extra rides only in the first chunk.
+	data := make([]byte, 256*1024)
+	rng := rand.New(rand.NewSource(1))
+	rng.Read(data)
+	const limit = 64 * 1024
+	exec := []byte("// wasm_exec.js runtime shim")
+
+	chunks, err := splitAndZipWithLimit(data, limit, zipEntry{name: "wasm_exec.js", data: exec})
+	if err != nil {
+		t.Fatalf("splitAndZipWithLimit returned error: %v", err)
+	}
+	if len(chunks) < 2 {
+		t.Fatalf("expected multiple chunks, got %d", len(chunks))
+	}
+	got, ok := unzipChunkFile(t, chunks[0], "wasm_exec.js")
+	if !ok {
+		t.Fatal("first chunk missing wasm_exec.js")
+	}
+	if !bytes.Equal(got, exec) {
+		t.Errorf("wasm_exec.js content mismatch: got %q want %q", got, exec)
+	}
+	if _, ok := unzipChunkFile(t, chunks[1], "wasm_exec.js"); ok {
+		t.Error("trailing chunk should not carry wasm_exec.js")
+	}
+}
+
 // Test_staticResourceNames verifies chunk 0 keeps the base name and the rest are
 // suffixed Part1, Part2, ... in load order.
 func Test_staticResourceNames(t *testing.T) {
@@ -275,11 +305,14 @@ func Test_generateAppJS_imports_base_resource(t *testing.T) {
 }
 
 func Test_generateVisualforcePage_wires_runtime_and_remoting(t *testing.T) {
-	page := generateVisualforcePage("Clinic Scheduler", "ClinicSchedulerWasmExec", []string{"ClinicScheduler"})
+	// Default (managed package) deployment references the namespaced osgo
+	// GoBridge controller. The Go runtime loads from the app's own static
+	// resource, where wasm_exec.js was packed next to bundle.wasm.
+	page := generateVisualforcePage("Clinic Scheduler", "osgo.GoBridge", []string{"ClinicScheduler"})
 	for _, want := range []string{
-		`controller="GoBridge"`,
-		`<apex:includeScript value="{!$Resource.ClinicSchedulerWasmExec}"/>`,
-		`"{!$RemoteAction.GoBridge.remoteCallRest}"`,
+		`controller="osgo.GoBridge"`,
+		`<apex:includeScript value="{!URLFOR($Resource.ClinicScheduler, 'wasm_exec.js')}"/>`,
+		`"{!$RemoteAction.osgo.GoBridge.remoteCallRest}"`,
 		`globalThis.get = function`,
 		`"{!URLFOR($Resource.ClinicScheduler, 'bundle.wasm')}"`,
 		`startWithDiv(document.getElementById("thunder-app"))`,
@@ -294,8 +327,23 @@ func Test_generateVisualforcePage_wires_runtime_and_remoting(t *testing.T) {
 	}
 }
 
+func Test_generateVisualforcePage_uses_unmanaged_gobridge_under_thunder_dev(t *testing.T) {
+	// --thunder-dev deploys GoBridge unmanaged, so the page references it
+	// without the osgo namespace.
+	page := generateVisualforcePage("App", "GoBridge", []string{"App"})
+	for _, want := range []string{
+		`controller="GoBridge"`,
+		`<apex:includeScript value="{!URLFOR($Resource.App, 'wasm_exec.js')}"/>`,
+		`"{!$RemoteAction.GoBridge.remoteCallRest}"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("thunder-dev page missing %q\n%s", want, page)
+		}
+	}
+}
+
 func Test_generateVisualforcePage_lists_all_split_parts(t *testing.T) {
-	page := generateVisualforcePage("App", "AppWasmExec", staticResourceNames("App", 3))
+	page := generateVisualforcePage("App", "osgo.GoBridge", staticResourceNames("App", 3))
 	for _, want := range []string{
 		`"{!URLFOR($Resource.App, 'bundle.wasm')}"`,
 		`"{!URLFOR($Resource.AppPart1, 'bundle.wasm')}"`,
@@ -307,12 +355,11 @@ func Test_generateVisualforcePage_lists_all_split_parts(t *testing.T) {
 	}
 }
 
-func Test_buildVisualforcePackageXML_includes_all_types(t *testing.T) {
-	xml := buildVisualforcePackageXML(staticResourceNames("App", 2), "AppWasmExec", "App", "APP", true)
+func Test_buildVisualforcePackageXML_includes_all_types_under_thunder_dev(t *testing.T) {
+	xml := buildVisualforcePackageXML(staticResourceNames("App", 2), "App", "APP", true, true)
 	for _, want := range []string{
 		"<members>App</members>",
 		"<members>AppPart1</members>",
-		"<members>AppWasmExec</members>",
 		"<name>StaticResource</name>",
 		"<members>GoBridge</members>",
 		"<name>ApexClass</name>",
@@ -327,8 +374,35 @@ func Test_buildVisualforcePackageXML_includes_all_types(t *testing.T) {
 	}
 }
 
+// Without --thunder-dev the GoBridge classes and Thunder Settings object come
+// from the osgo managed package, so the manifest lists only the app's own
+// metadata (the WASM static resources carry wasm_exec.js).
+func Test_buildVisualforcePackageXML_omits_managed_package_members(t *testing.T) {
+	xml := buildVisualforcePackageXML(staticResourceNames("App", 2), "App", "APP", true, false)
+	for _, want := range []string{
+		"<members>App</members>",
+		"<members>AppPart1</members>",
+		"<name>StaticResource</name>",
+		"<name>ApexPage</name>",
+		"<name>CustomTab</name>",
+	} {
+		if !strings.Contains(xml, want) {
+			t.Errorf("package.xml missing %q\n%s", want, xml)
+		}
+	}
+	for _, unwanted := range []string{
+		"<members>GoBridge</members>",
+		"<name>ApexClass</name>",
+		"<members>Thunder_Settings__c</members>",
+	} {
+		if strings.Contains(xml, unwanted) {
+			t.Errorf("package.xml should not contain %q without --thunder-dev\n%s", unwanted, xml)
+		}
+	}
+}
+
 func Test_buildVisualforcePackageXML_omits_tab_without_flag(t *testing.T) {
-	xml := buildVisualforcePackageXML(staticResourceNames("App", 1), "AppWasmExec", "App", "APP", false)
+	xml := buildVisualforcePackageXML(staticResourceNames("App", 1), "App", "APP", false, false)
 	if strings.Contains(xml, "<name>CustomTab</name>") {
 		t.Errorf("package.xml should not contain a CustomTab when withTab is false\n%s", xml)
 	}

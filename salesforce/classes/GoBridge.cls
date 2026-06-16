@@ -1,4 +1,4 @@
-public with sharing class GoBridge {
+global with sharing class GoBridge {
 	/**
 	 * Generic REST proxy for client-side Go WASM calls.
 	 * Mirrors Salesforce REST API endpoints via Apex @AuraEnabled method.
@@ -717,7 +717,7 @@ public with sharing class GoBridge {
 	 * same proxy through JavaScript Remoting instead.
 	 */
 	@RemoteAction
-	public static String remoteCallRest(String method, String url, String body) {
+	global static String remoteCallRest(String method, String url, String body) {
 		return callRest(method, url, body);
 	}
 

@@ -30,7 +30,11 @@ import (
 )
 
 // Build-time variable that can be overridden with -ldflags
-var osgoPackageVersionId = "04tKe000000xB5tIAE"
+var osgoPackageVersionId = "04tKe0000008rAjIAI"
+
+// osgoNamespace is the managed package namespace whose GoBridge proxy backs
+// deployments that don't use --thunder-dev.
+const osgoNamespace = "osgo"
 
 // global state for serve command
 var (
@@ -953,7 +957,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	zipChunks, err := splitAndZip(wasmData)
+	firstChunkExtras, err := visualforceRuntimeExtras()
+	if err != nil {
+		return err
+	}
+	zipChunks, err := splitAndZip(wasmData, firstChunkExtras...)
 	if err != nil {
 		return err
 	}
@@ -1001,14 +1009,27 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		if appName == "" {
 			appName = appClass
 		}
-		wasmExecName := staticResourceName + "WasmExec"
 		tabName := toUpperSnakeCase(lwcName)
-		if err := addVisualforceMetadata(files, wasmExecName, resourceNames, appClass, appName, tabName); err != nil {
+		// Like the LWC deployment, the page reaches GoBridge from the osgo
+		// managed package unless --thunder-dev deploys it unmanaged; the
+		// controller and RemoteAction references are namespaced accordingly. The
+		// Go runtime (wasm_exec.js) always ships inside the app's static resource
+		// next to bundle.wasm, so neither path deploys a separate copy.
+		controllerClass := osgoNamespace + ".GoBridge"
+		if deployThunderDev {
+			controllerClass = "GoBridge"
+		}
+		if err := addVisualforceMetadata(files, resourceNames, appClass, appName, tabName, controllerClass, deployThunderDev); err != nil {
 			return err
 		}
-		files["package.xml"] = []byte(buildVisualforcePackageXML(resourceNames, wasmExecName, appClass, tabName, deployTab))
+		files["package.xml"] = []byte(buildVisualforcePackageXML(resourceNames, appClass, tabName, deployTab, deployThunderDev))
 
-		if err := performDeployment(files, staticResourceName, "", false, []string{"GoBridgeTest"}); err != nil {
+		// Only the unmanaged GoBridge deployment includes GoBridgeTest to run.
+		var runTests []string
+		if deployThunderDev {
+			runTests = []string{"GoBridgeTest"}
+		}
+		if err := performDeployment(files, staticResourceName, "", false, runTests); err != nil {
 			return err
 		}
 		openVisualforceApp(appClass, tabName, deployTab)
@@ -1198,7 +1219,11 @@ func redeployWASM(appDir, staticResourceName string) error {
 	if err != nil {
 		return err
 	}
-	zipChunks, err := splitAndZip(wasmData)
+	firstChunkExtras, err := visualforceRuntimeExtras()
+	if err != nil {
+		return err
+	}
+	zipChunks, err := splitAndZip(wasmData, firstChunkExtras...)
 	if err != nil {
 		return err
 	}
@@ -1302,16 +1327,34 @@ const staticResourceLimit = 5 * 1024 * 1024
 // always carries a parts.json manifest recording the total chunk count (1 when
 // the bundle fits in a single resource); the runtime loader treats a resource
 // without that manifest as a legacy single-part app.
-func splitAndZip(wasmData []byte) ([][]byte, error) {
-	return splitAndZipWithLimit(wasmData, staticResourceLimit)
+// visualforceRuntimeExtras returns the extra files to pack into the first WASM
+// static resource for a Visualforce deployment: the Go runtime (wasm_exec.js)
+// from the SDK that built the bundle, which the page loads as a script. Taking
+// it from the same SDK keeps the runtime in lockstep with the compiler. Returns
+// nil for non-Visualforce deployments, which load the runtime differently.
+func visualforceRuntimeExtras() ([]zipEntry, error) {
+	if !deployVisualforce {
+		return nil, nil
+	}
+	wasmExecPath := filepath.Join(runtime.GOROOT(), "lib", "wasm", "wasm_exec.js")
+	wasmExec, err := os.ReadFile(wasmExecPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read wasm_exec.js from the Go SDK: %w", err)
+	}
+	return []zipEntry{{name: "wasm_exec.js", data: wasmExec}}, nil
+}
+
+func splitAndZip(wasmData []byte, firstChunkExtras ...zipEntry) ([][]byte, error) {
+	return splitAndZipWithLimit(wasmData, staticResourceLimit, firstChunkExtras...)
 }
 
 // splitAndZipWithLimit is splitAndZip with an explicit per-resource byte limit
-// (parameterized for testing).
-func splitAndZipWithLimit(wasmData []byte, limit int) ([][]byte, error) {
+// (parameterized for testing). firstChunkExtras are additional files packed into
+// the first archive only (e.g. wasm_exec.js for Visualforce deployments).
+func splitAndZipWithLimit(wasmData []byte, limit int, firstChunkExtras ...zipEntry) ([][]byte, error) {
 	// The single-resource case still carries a parts.json manifest (parts=1) so
 	// newly deployed apps are described uniformly.
-	whole, err := zipChunkWithManifest(wasmData, 1)
+	whole, err := zipChunkWithManifest(wasmData, 1, firstChunkExtras...)
 	if err != nil {
 		return nil, err
 	}
@@ -1327,7 +1370,7 @@ func splitAndZipWithLimit(wasmData []byte, limit int) ([][]byte, error) {
 		rawChunk = limit
 	}
 	for {
-		chunks, ok, err := chunkAndZip(wasmData, rawChunk, limit)
+		chunks, ok, err := chunkAndZip(wasmData, rawChunk, limit, firstChunkExtras...)
 		if err != nil {
 			return nil, err
 		}
@@ -1348,7 +1391,7 @@ func splitAndZipWithLimit(wasmData []byte, limit int) ([][]byte, error) {
 // runtime loader knows how many sibling Part resources to fetch. It reports
 // ok=false (without error) if any resulting archive exceeds limit so the caller
 // can retry with a smaller chunk size.
-func chunkAndZip(wasmData []byte, rawChunk, limit int) (chunks [][]byte, ok bool, err error) {
+func chunkAndZip(wasmData []byte, rawChunk, limit int, firstChunkExtras ...zipEntry) (chunks [][]byte, ok bool, err error) {
 	count := (len(wasmData) + rawChunk - 1) / rawChunk
 	for off, idx := 0, 0; off < len(wasmData); off, idx = off+rawChunk, idx+1 {
 		end := off + rawChunk
@@ -1357,7 +1400,7 @@ func chunkAndZip(wasmData []byte, rawChunk, limit int) (chunks [][]byte, ok bool
 		}
 		var z []byte
 		if idx == 0 {
-			z, err = zipChunkWithManifest(wasmData[off:end], count)
+			z, err = zipChunkWithManifest(wasmData[off:end], count, firstChunkExtras...)
 		} else {
 			z, err = zipBundle(wasmData[off:end])
 		}
@@ -1475,38 +1518,35 @@ func buildPackageXML(resourceNames []string, appComp, tabName string, thunderDev
 }
 
 // addVisualforceMetadata registers everything a Visualforce-hosted app needs:
-// the Go runtime (wasm_exec.js) as a raw static resource, the GoBridge proxy
-// classes and Thunder Settings object (deployed unmanaged so the page's
-// JavaScript Remoting can reach them), the Visualforce page itself, and an
-// optional CustomTab pointing at the page.
-func addVisualforceMetadata(files forcecli.ForceMetadataFiles, wasmExecName string, resourceNames []string, pageName, appName, tabName string) error {
-	// Go runtime shim from the SDK matching the toolchain that built the bundle.
-	wasmExecPath := filepath.Join(runtime.GOROOT(), "lib", "wasm", "wasm_exec.js")
-	wasmExec, err := os.ReadFile(wasmExecPath)
-	if err != nil {
-		return fmt.Errorf("failed to read wasm_exec.js from the Go SDK: %w", err)
-	}
-	addRawStaticResource(files, wasmExecName, wasmExec)
-
-	// GoBridge proxy classes and the Thunder Settings object, deployed unmanaged
-	// so the page can call GoBridge.remoteCallRest via JavaScript Remoting.
-	apexTemplates := []string{
-		"classes/GoBridge.cls",
-		"classes/GoBridge.cls-meta.xml",
-		"classes/GoBridgeTest.cls",
-		"classes/GoBridgeTest.cls-meta.xml",
-		"objects/Thunder_Settings__c.object",
-	}
-	for _, src := range apexTemplates {
-		data, err := salesforce.SalesforceMetadataFS.ReadFile(src)
-		if err != nil {
-			return fmt.Errorf("failed to read embedded %s: %w", src, err)
+// the Visualforce page itself and an optional CustomTab pointing at it. When
+// thunderDev is set it also bundles the GoBridge proxy classes and Thunder
+// Settings object unmanaged, so the page's JavaScript Remoting can reach them.
+// Otherwise the page references the osgo managed package's GoBridge and only the
+// app metadata is deployed (like the LWC deployment). The Go runtime
+// (wasm_exec.js) rides inside the app's WASM static resource in both cases.
+func addVisualforceMetadata(files forcecli.ForceMetadataFiles, resourceNames []string, pageName, appName, tabName, controllerClass string, thunderDev bool) error {
+	if thunderDev {
+		// GoBridge proxy classes and the Thunder Settings object, deployed
+		// unmanaged so the page can call GoBridge.remoteCallRest via JavaScript
+		// Remoting.
+		apexTemplates := []string{
+			"classes/GoBridge.cls",
+			"classes/GoBridge.cls-meta.xml",
+			"classes/GoBridgeTest.cls",
+			"classes/GoBridgeTest.cls-meta.xml",
+			"objects/Thunder_Settings__c.object",
 		}
-		files[src] = data
+		for _, src := range apexTemplates {
+			data, err := salesforce.SalesforceMetadataFS.ReadFile(src)
+			if err != nil {
+				return fmt.Errorf("failed to read embedded %s: %w", src, err)
+			}
+			files[src] = data
+		}
 	}
 
 	// The Visualforce page and its metadata.
-	page := generateVisualforcePage(appName, wasmExecName, resourceNames)
+	page := generateVisualforcePage(appName, controllerClass, resourceNames)
 	files[fmt.Sprintf("pages/%s.page", pageName)] = []byte(page)
 	files[fmt.Sprintf("pages/%s.page-meta.xml", pageName)] = []byte(visualforcePageMetaXML(appName))
 
@@ -1521,20 +1561,6 @@ func addVisualforceMetadata(files forcecli.ForceMetadataFiles, wasmExecName stri
 		files[fmt.Sprintf("tabs/%s.tab-meta.xml", tabName)] = []byte(tabXml)
 	}
 	return nil
-}
-
-// wasmExecResourceMetaXML accompanies the raw wasm_exec.js static resource.
-const wasmExecResourceMetaXML = `<?xml version="1.0" encoding="UTF-8"?>
-<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
-	<cacheControl>Public</cacheControl>
-	<contentType>text/javascript</contentType>
-</StaticResource>`
-
-// addRawStaticResource registers an uncompressed static resource (used for
-// wasm_exec.js, which the Visualforce page loads directly as a script).
-func addRawStaticResource(files forcecli.ForceMetadataFiles, name string, data []byte) {
-	files["staticresources/"+name+".resource"] = data
-	files["staticresources/"+name+".resource-meta.xml"] = []byte(wasmExecResourceMetaXML)
 }
 
 // wasmURLListJS renders the comma-separated list of Visualforce $Resource URLs
@@ -1553,15 +1579,18 @@ func wasmURLListJS(resourceNames []string) string {
 // The page loads the Go runtime and the WASM static resource(s), exposes the same
 // global functions the app expects (get/post/patch/delete plus record/exit
 // helpers), instantiates the module, and hands a container div to startWithDiv.
-// REST calls reach GoBridge.remoteCallRest through JavaScript Remoting.
-func generateVisualforcePage(appName, wasmExecName string, resourceNames []string) string {
-	return fmt.Sprintf(`<apex:page controller="GoBridge" showHeader="false" sidebar="false" standardStylesheets="false" applyHtmlTag="false" applyBodyTag="false" docType="html-5.0">
+// REST calls reach <controllerClass>.remoteCallRest through JavaScript Remoting.
+// The Go runtime (wasm_exec.js) is loaded from inside the first WASM static
+// resource (resourceNames[0]), where it was packed next to bundle.wasm.
+func generateVisualforcePage(appName, controllerClass string, resourceNames []string) string {
+	wasmExecURL := fmt.Sprintf("{!URLFOR($Resource.%s, 'wasm_exec.js')}", resourceNames[0])
+	return fmt.Sprintf(`<apex:page controller="%[4]s" showHeader="false" sidebar="false" standardStylesheets="false" applyHtmlTag="false" applyBodyTag="false" docType="html-5.0">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<meta charset="utf-8"/>
 	<title>%[1]s</title>
 	<apex:slds />
-	<apex:includeScript value="{!$Resource.%[2]s}"/>
+	<apex:includeScript value="%[2]s"/>
 </head>
 <body class="slds-scope">
 	<div id="thunder-spinner" class="slds-spinner_container">
@@ -1591,7 +1620,7 @@ func generateVisualforcePage(appName, wasmExecName string, resourceNames []strin
 		function remoteCall(method, url, body) {
 			return new Promise(function (resolve, reject) {
 				Visualforce.remoting.Manager.invokeAction(
-					"{!$RemoteAction.GoBridge.remoteCallRest}",
+					"{!$RemoteAction.%[4]s.remoteCallRest}",
 					method, url, body,
 					function (result, event) {
 						if (event.status) {
@@ -1691,7 +1720,7 @@ func generateVisualforcePage(appName, wasmExecName string, resourceNames []strin
 	</script>
 </body>
 </html>
-</apex:page>`, appName, wasmExecName, wasmURLListJS(resourceNames))
+</apex:page>`, appName, wasmExecURL, wasmURLListJS(resourceNames), controllerClass)
 }
 
 // visualforcePageMetaXML returns the ApexPage metadata for a generated page.
@@ -1705,19 +1734,22 @@ func visualforcePageMetaXML(label string) string {
 }
 
 // buildVisualforcePackageXML assembles the deployment manifest for a Visualforce
-// app: the WASM static resources and wasm_exec.js, the GoBridge proxy classes,
-// the Thunder Settings object, the page, and an optional CustomTab.
-func buildVisualforcePackageXML(resourceNames []string, wasmExecName, pageName, tabName string, withTab bool) string {
+// app: the WASM static resources (which carry wasm_exec.js), the page, and an
+// optional CustomTab. Under thunderDev it also lists the GoBridge proxy classes
+// and the Thunder Settings object that are deployed unmanaged; otherwise those
+// come from the osgo managed package and are omitted.
+func buildVisualforcePackageXML(resourceNames []string, pageName, tabName string, withTab, thunderDev bool) string {
 	var b strings.Builder
 	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
 	b.WriteString("<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n")
 	b.WriteString("  <types>\n")
 	b.WriteString(staticResourceMembersXML(resourceNames))
-	b.WriteString("    <members>" + wasmExecName + "</members>\n")
 	b.WriteString("    <name>StaticResource</name>\n")
 	b.WriteString("  </types>\n")
-	b.WriteString("  <types>\n    <members>GoBridge</members>\n    <members>GoBridgeTest</members>\n    <name>ApexClass</name>\n  </types>\n")
-	b.WriteString("  <types>\n    <members>Thunder_Settings__c</members>\n    <name>CustomObject</name>\n  </types>\n")
+	if thunderDev {
+		b.WriteString("  <types>\n    <members>GoBridge</members>\n    <members>GoBridgeTest</members>\n    <name>ApexClass</name>\n  </types>\n")
+		b.WriteString("  <types>\n    <members>Thunder_Settings__c</members>\n    <name>CustomObject</name>\n  </types>\n")
+	}
 	b.WriteString("  <types>\n    <members>" + pageName + "</members>\n    <name>ApexPage</name>\n  </types>\n")
 	if withTab {
 		b.WriteString("  <types>\n    <members>" + tabName + "</members>\n    <name>CustomTab</name>\n  </types>\n")
@@ -1791,11 +1823,14 @@ func zipBundle(wasmData []byte) ([]byte, error) {
 // zipChunkWithManifest compresses the first chunk of a split bundle, adding a
 // parts.json manifest that records how many static resources the full bundle was
 // split across. The runtime loader reads it to fetch and concatenate the
-// remaining Part resources before instantiating the WASM module.
-func zipChunkWithManifest(wasmData []byte, parts int) ([]byte, error) {
+// remaining Part resources before instantiating the WASM module. extras are any
+// additional files to pack alongside (e.g. wasm_exec.js for Visualforce apps).
+func zipChunkWithManifest(wasmData []byte, parts int, extras ...zipEntry) ([]byte, error) {
 	manifest := fmt.Sprintf(`{"parts":%d}`, parts)
-	return zipFiles([]zipEntry{
+	entries := []zipEntry{
 		{name: "bundle.wasm", data: wasmData},
 		{name: "parts.json", data: []byte(manifest)},
-	})
+	}
+	entries = append(entries, extras...)
+	return zipFiles(entries)
 }
