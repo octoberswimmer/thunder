@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func Test_indexHandler_serves_index_html(t *testing.T) {
@@ -312,7 +314,10 @@ func Test_generateVisualforcePage_wires_runtime_and_remoting(t *testing.T) {
 	for _, want := range []string{
 		`controller="osgo.GoBridge"`,
 		`<apex:includeScript value="{!URLFOR($Resource.ClinicScheduler, 'wasm_exec.js')}"/>`,
-		`"{!$RemoteAction.osgo.GoBridge.remoteCallRest}"`,
+		// $RemoteAction resolves the namespace automatically, so the merge field
+		// uses the unqualified class name; a namespaced reference is rejected by
+		// the Visualforce compiler.
+		`"{!$RemoteAction.GoBridge.remoteCallRest}"`,
 		`globalThis.get = function`,
 		`"{!URLFOR($Resource.ClinicScheduler, 'bundle.wasm')}"`,
 		`startWithDiv(document.getElementById("thunder-app"))`,
@@ -324,6 +329,10 @@ func Test_generateVisualforcePage_wires_runtime_and_remoting(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("generated page missing %q\n%s", want, page)
 		}
+	}
+	// The namespace must not leak into the RemoteAction merge field.
+	if strings.Contains(page, `$RemoteAction.osgo.GoBridge`) {
+		t.Errorf("RemoteAction reference must not include the namespace prefix\n%s", page)
 	}
 }
 
@@ -428,5 +437,32 @@ func Test_optimizeWASM_missing_binary_is_noop(t *testing.T) {
 	}
 	if !bytes.Equal(got, data) {
 		t.Errorf("optimizeWASM mutated bundle when wasm-opt was missing")
+	}
+}
+
+func Test_packageLoadError_returns_nil_for_clean_package(t *testing.T) {
+	pkgs := []*packages.Package{{Name: "main"}}
+	if err := packageLoadError(pkgs); err != nil {
+		t.Errorf("expected nil for clean package, got: %v", err)
+	}
+}
+
+func Test_packageLoadError_reports_no_package_found(t *testing.T) {
+	err := packageLoadError(nil)
+	if err == nil || !strings.Contains(err.Error(), "no Go package found") {
+		t.Errorf("expected no-package error, got: %v", err)
+	}
+}
+
+func Test_packageLoadError_surfaces_underlying_package_errors(t *testing.T) {
+	pkgs := []*packages.Package{{
+		Name: "",
+		Errors: []packages.Error{
+			{Msg: "go.work lists go 1.24.4 but module requires go >= 1.25.0"},
+		},
+	}}
+	err := packageLoadError(pkgs)
+	if err == nil || !strings.Contains(err.Error(), "go >= 1.25.0") {
+		t.Errorf("expected underlying load error to be surfaced, got: %v", err)
 	}
 }

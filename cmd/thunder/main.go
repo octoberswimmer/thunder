@@ -30,7 +30,7 @@ import (
 )
 
 // Build-time variable that can be overridden with -ldflags
-var osgoPackageVersionId = "04tKe0000008rAjIAI"
+var osgoPackageVersionId = "04tKe0000008rAoIAI"
 
 // osgoNamespace is the managed package namespace whose GoBridge proxy backs
 // deployments that don't use --thunder-dev.
@@ -270,6 +270,26 @@ func shouldDisableWorkspace(targetDir string) bool {
 	}
 
 	return true // Target not in workspace, disable GOWORK
+}
+
+// packageLoadError returns a non-nil error describing why a Go package failed
+// to load, or nil if the package loaded cleanly. It surfaces the underlying
+// driver/build errors (e.g. workspace version mismatches) that packages.Load
+// reports per-package rather than via its returned error.
+func packageLoadError(pkgs []*packages.Package) error {
+	if len(pkgs) == 0 {
+		return fmt.Errorf("no Go package found")
+	}
+	var msgs []string
+	for _, pkg := range pkgs {
+		for _, e := range pkg.Errors {
+			msgs = append(msgs, e.Error())
+		}
+	}
+	if len(msgs) > 0 {
+		return fmt.Errorf("%s", strings.Join(msgs, "\n"))
+	}
+	return nil
 }
 
 // findFreePort finds and reserves a free port, returning both the port and listener
@@ -594,8 +614,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Dir:  serveDir,
 		Env:  env,
 	}
-	pkgs, _ := packages.Load(cfg, ".")
-	if len(pkgs) == 0 || pkgs[0].Name != "main" {
+	pkgs, err := packages.Load(cfg, ".")
+	if err != nil {
+		return fmt.Errorf("failed to load Go package in %s: %w", serveDir, err)
+	}
+	if loadErr := packageLoadError(pkgs); loadErr != nil {
+		return fmt.Errorf("failed to load Go package in %s: %w", serveDir, loadErr)
+	}
+	if pkgs[0].Name != "main" {
 		return fmt.Errorf("serve directory %s is not package main", serveDir)
 	}
 	// Fetch Salesforce auth info
@@ -924,9 +950,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		Dir:  deployDir,
 		Env:  env,
 	}
-	pkgs, _ := packages.Load(cfg, ".")
-	if len(pkgs) == 0 || pkgs[0].Name != "main" {
-		return fmt.Errorf("serve directory %s is not package main", deployDir)
+	pkgs, err := packages.Load(cfg, ".")
+	if err != nil {
+		return fmt.Errorf("failed to load Go package in %s: %w", deployDir, err)
+	}
+	if loadErr := packageLoadError(pkgs); loadErr != nil {
+		return fmt.Errorf("failed to load Go package in %s: %w", deployDir, loadErr)
+	}
+	if pkgs[0].Name != "main" {
+		return fmt.Errorf("deploy directory %s is not package main", deployDir)
 	}
 
 	// Check for osgo package installation and install if needed (unless using --thunder-dev)
@@ -1584,6 +1616,15 @@ func wasmURLListJS(resourceNames []string) string {
 // resource (resourceNames[0]), where it was packed next to bundle.wasm.
 func generateVisualforcePage(appName, controllerClass string, resourceNames []string) string {
 	wasmExecURL := fmt.Sprintf("{!URLFOR($Resource.%s, 'wasm_exec.js')}", resourceNames[0])
+	// The $RemoteAction merge field takes only <controller>.<method> and appends
+	// the controller's namespace automatically; including a namespace prefix here
+	// (e.g. osgo.GoBridge) makes Visualforce reject the page. The controller
+	// attribute, however, keeps the namespace so the page binds to the managed
+	// class, so strip the namespace only for the RemoteAction reference.
+	remoteActionClass := controllerClass
+	if i := strings.LastIndex(remoteActionClass, "."); i >= 0 {
+		remoteActionClass = remoteActionClass[i+1:]
+	}
 	return fmt.Sprintf(`<apex:page controller="%[4]s" showHeader="false" sidebar="false" standardStylesheets="false" applyHtmlTag="false" applyBodyTag="false" docType="html-5.0">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -1620,7 +1661,7 @@ func generateVisualforcePage(appName, controllerClass string, resourceNames []st
 		function remoteCall(method, url, body) {
 			return new Promise(function (resolve, reject) {
 				Visualforce.remoting.Manager.invokeAction(
-					"{!$RemoteAction.%[4]s.remoteCallRest}",
+					"{!$RemoteAction.%[5]s.remoteCallRest}",
 					method, url, body,
 					function (result, event) {
 						if (event.status) {
@@ -1720,7 +1761,7 @@ func generateVisualforcePage(appName, controllerClass string, resourceNames []st
 	</script>
 </body>
 </html>
-</apex:page>`, appName, wasmExecURL, wasmURLListJS(resourceNames), controllerClass)
+</apex:page>`, appName, wasmExecURL, wasmURLListJS(resourceNames), controllerClass, remoteActionClass)
 }
 
 // visualforcePageMetaXML returns the ApexPage metadata for a generated page.
