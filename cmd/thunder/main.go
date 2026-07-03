@@ -989,7 +989,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	firstChunkExtras, err := visualforceRuntimeExtras()
+	firstChunkExtras, err := runtimeExtras()
 	if err != nil {
 		return err
 	}
@@ -1251,7 +1251,7 @@ func redeployWASM(appDir, staticResourceName string) error {
 	if err != nil {
 		return err
 	}
-	firstChunkExtras, err := visualforceRuntimeExtras()
+	firstChunkExtras, err := runtimeExtras()
 	if err != nil {
 		return err
 	}
@@ -1359,15 +1359,14 @@ const staticResourceLimit = 5 * 1024 * 1024
 // always carries a parts.json manifest recording the total chunk count (1 when
 // the bundle fits in a single resource); the runtime loader treats a resource
 // without that manifest as a legacy single-part app.
-// visualforceRuntimeExtras returns the extra files to pack into the first WASM
-// static resource for a Visualforce deployment: the Go runtime (wasm_exec.js)
-// from the SDK that built the bundle, which the page loads as a script. Taking
-// it from the same SDK keeps the runtime in lockstep with the compiler. Returns
-// nil for non-Visualforce deployments, which load the runtime differently.
-func visualforceRuntimeExtras() ([]zipEntry, error) {
-	if !deployVisualforce {
-		return nil, nil
-	}
+// runtimeExtras returns the extra files to pack into the first WASM static
+// resource: the Go runtime (wasm_exec.js) from the SDK that built the bundle.
+// Taking it from the same SDK keeps the runtime in lockstep with the compiler.
+// Visualforce pages load it from the resource as a script; LWC deployments load
+// the runtime through the go LWC and ignore it. It ships unconditionally so
+// WASM-only redeploys (--app-only, --watch) don't need to know how the app was
+// originally deployed.
+func runtimeExtras() ([]zipEntry, error) {
 	wasmExecPath := filepath.Join(runtime.GOROOT(), "lib", "wasm", "wasm_exec.js")
 	wasmExec, err := os.ReadFile(wasmExecPath)
 	if err != nil {

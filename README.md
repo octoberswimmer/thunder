@@ -375,7 +375,7 @@ API REST requests (via `/services/`) are automatically proxied through your acti
 - Generates `package.xml` (includes CustomTab if requested) and deploys all metadata via your CLI session.
 - With `--tab`, adds a CustomTab to the package, deploys it, and opens `/lightning/n/<app>` in your browser.
 - With `--watch`, monitors Go source files and automatically redeploys on changes for rapid development cycles.
-- With `--app-only`, deploys only the static resource containing the WASM bundle. This is useful for production deployments where the supporting metadata (LWC components, Apex classes) are already deployed.
+- With `--app-only`, deploys only the static resource containing the WASM bundle. This is useful for production deployments where the supporting metadata (LWC components, Apex classes, Visualforce page) is already deployed. The Go runtime (`wasm_exec.js`) is always packed into the first static resource, so `--app-only` works for both LWC and Visualforce apps.
 - With `--visualforce`, deploys the app as a Visualforce page instead of an LWC (see below).
 - All deployments use `rollbackOnError: true` and skip test execution for faster deployment to production.
 

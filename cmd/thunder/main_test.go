@@ -272,6 +272,26 @@ func Test_splitAndZip_first_chunk_carries_extras(t *testing.T) {
 	}
 }
 
+// Test_runtimeExtras_ships_wasm_exec_without_visualforce_flag verifies the Go
+// runtime is packed into the static resource even when --visualforce is not
+// set, so --app-only and --watch redeploys of Visualforce apps keep working.
+func Test_runtimeExtras_ships_wasm_exec_without_visualforce_flag(t *testing.T) {
+	orig := deployVisualforce
+	deployVisualforce = false
+	defer func() { deployVisualforce = orig }()
+
+	extras, err := runtimeExtras()
+	if err != nil {
+		t.Fatalf("runtimeExtras returned error: %v", err)
+	}
+	if len(extras) != 1 || extras[0].name != "wasm_exec.js" {
+		t.Fatalf("expected a single wasm_exec.js entry, got %v", extras)
+	}
+	if len(extras[0].data) == 0 {
+		t.Error("wasm_exec.js entry is empty")
+	}
+}
+
 // Test_staticResourceNames verifies chunk 0 keeps the base name and the rest are
 // suffixed Part1, Part2, ... in load order.
 func Test_staticResourceNames(t *testing.T) {
